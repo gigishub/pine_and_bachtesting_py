@@ -54,7 +54,9 @@ class BitcoinMomentumStrategy(Strategy):
     bb_mult = 2.0
 
     def init(self) -> None:
-        # Precompute all indicator/signal series once. `next()` only consumes values.
+        # Run all indicator logic once up-front on the full DataFrame.
+        # backtesting.py calls init() before the bar loop starts, so this is
+        # the right place for any computation that doesn't depend on bar index.
         df = self.data.df.copy()
         signals = build_strategy_series(
             df=df,
@@ -67,13 +69,19 @@ class BitcoinMomentumStrategy(Strategy):
             trail_stop_lookback=self.trail_stop_lookback,
         )
 
-        self.atr_value = self.I(lambda: signals["atr_value"].values.copy())
-        self.htf_ema_value = self.I(lambda: signals["htf_ema_value"].values.copy())
-        self.is_bullish = self.I(lambda: signals["is_bullish"].values.copy())
-        self.is_caution = self.I(lambda: signals["is_caution"].values.copy())
-        self.highest_trail_src = self.I(lambda: signals["highest_trail_src"].values.copy())
-        self.is_ready = self.I(lambda: signals["is_ready"].values.copy())
+        # Register each signal with self.I() so backtesting.py tracks it as an
+        # indicator series — this makes it sliceable with [-1], [-2] in next().
+        def _reg(key: str):
+            return self.I(lambda: signals[key].values.copy())
 
+        self.atr_value         = _reg("atr_value")          # ATR(atr_length) in USD
+        self.htf_ema_value     = _reg("htf_ema_value")      # Weekly EMA — trend filter
+        self.is_bullish        = _reg("is_bullish")          # True when price > HTF EMA
+        self.is_caution        = _reg("is_caution")          # True when BB squeeze / caution zone
+        self.highest_trail_src = _reg("highest_trail_src")  # Rolling highest low for trail anchor
+        self.is_ready          = _reg("is_ready")            # False until all indicators have enough bars
+
+        # trail_stop is stateful: updated bar-by-bar in next(), not precomputed.
         self.trail_stop = None
 
     def _open_position_if_needed(self, bullish: bool, caution: bool) -> None:
@@ -105,22 +113,28 @@ class BitcoinMomentumStrategy(Strategy):
             self.trail_stop = None
 
     def next(self) -> None:
-        # Snapshot current-bar values from precomputed series.
+        # Skip bars where indicators haven't warmed up yet (e.g. first ~20 bars).
         if not bool(self.is_ready[-1]):
             return
 
+        # --- Snapshot current-bar values ---
+        # Reading [-1] gives the value at the current (most recent visible) bar.
         close_now = self.data.Close[-1]
 
-        bullish = bool(self.is_bullish[-1])
-        caution = bool(self.is_caution[-1])
+        bullish = bool(self.is_bullish[-1])   # is the HTF trend up?
+        caution = bool(self.is_caution[-1])   # are we in a caution/squeeze zone?
 
-        atr_now = self.atr_value[-1]
-        htf_ema_now = self.htf_ema_value[-1]
+        atr_now               = self.atr_value[-1]
+        htf_ema_now           = self.htf_ema_value[-1]
         highest_trail_src_now = self.highest_trail_src[-1]
 
-        prev_caution = bool(self.is_caution[-2]) if len(self.is_caution) > 1 else False
+        # prev_caution: needed by the trail logic to detect caution-zone *exit*
+        # (the moment caution flips False is when the trail resets its anchor).
+        prev_caution = bool(self.is_caution[-2] if len(self.is_caution) > 1 else False)
 
-        # Flow is intentionally split: entry -> trailing update -> exit check.
+        # --- Bar logic: always entry first, then trail update, then exit ---
+        # Order matters: entering before updating the stop ensures the stop is
+        # set on the same bar as the entry, not one bar late.
         self._open_position_if_needed(bullish, caution)
         self._update_trailing_stop(atr_now, prev_caution, highest_trail_src_now)
         self._close_position_if_needed(close_now, htf_ema_now)

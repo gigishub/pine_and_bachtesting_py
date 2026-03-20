@@ -22,4 +22,5 @@ def update_long_trail_stop(
         return current_trail_stop
     if current_trail_stop is None:
         return candidate_trail_stop
-    return candidate_trail_stop if candidate_trail_stop > current_trail_stop else current_trail_stop
+    # Never loosen the stop: only ratchet upward.
+    return max(current_trail_stop, candidate_trail_stop)

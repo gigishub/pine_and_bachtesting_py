@@ -6,7 +6,10 @@ from typing import Optional
 
 
 def _parse_ts(value: str) -> int:
-    return int(time.mktime(time.strptime(value, "%Y-%m-%d %H:%M:%S")))
+    """Parse a UTC datetime string to a UTC Unix timestamp."""
+    # calendar.timegm interprets the struct as UTC (unlike time.mktime which uses local time).
+    import calendar
+    return calendar.timegm(time.strptime(value, "%Y-%m-%d %H:%M:%S"))
 
 
 def _to_trade_type(market_type: str) -> str:

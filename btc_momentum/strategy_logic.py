@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pandas as pd
 
-from indicators import ind_atr, ind_bbands, ind_ema, non_repainting_htf_ema
+from indicators import ind_atr, ind_ema, non_repainting_htf_ema
 
 
 def build_strategy_series(
@@ -10,8 +10,8 @@ def build_strategy_series(
     higher_timeframe: str,
     ema_length: int,
     atr_length: int,
-    bb_length: int,
-    bb_mult: float,
+    bb_length: int,      # reserved — kept for optimizer compatibility
+    bb_mult: float,      # reserved — kept for optimizer compatibility
     trail_stop_source: str,
     trail_stop_lookback: int) -> dict[str, pd.Series]:
     
@@ -29,14 +29,15 @@ def build_strategy_series(
     ema_value = ind_ema(close, ema_length)
     htf_ema_value = non_repainting_htf_ema(close, higher_timeframe, ema_length)
 
-    # Direction filter and caution flag
+    # Direction filter: price above the higher-timeframe EMA means the macro trend is up.
     is_bullish = close > htf_ema_value
 
-    highest_price_7 = high.rolling(7).max()
-    is_caution = is_bullish & (((highest_price_7 - low) > (atr_value * 1.5)) | (close < ema_value))
-
-    # Keep BB calculation available for optimization parity with previous versions.
-    ind_bbands(close, bb_length, bb_mult)
+    # Caution flag: true when a wide-range bar recently printed (high-low > 1.5 ATR)
+    # OR price has dropped back below the local EMA — i.e. momentum is overextended/stalling.
+    # The 7-bar lookback matches the Pine source; loosen it here if you want a shorter memory.
+    CAUTION_LOOKBACK = 7
+    highest_price_n = high.rolling(CAUTION_LOOKBACK).max()
+    is_caution = is_bullish & (((highest_price_n - low) > (atr_value * 1.5)) | (close < ema_value))
 
     # Trailing source can be Low (default) or another OHLCV column name.
     trail_col = trail_stop_source
