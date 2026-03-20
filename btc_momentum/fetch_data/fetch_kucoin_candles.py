@@ -137,12 +137,3 @@ def load_ohlcv_kucoin(
         start_time=start_time,
         end_time=end_time,
     )
-
-
-if __name__ == "__main__":
-    # Example: fetch futures data via function call (import-friendly API).
-    df = get_kucoin_futures_candles_df()
-    print(df.head())
-    print(f"Loaded {len(df)} candles")
-
-

@@ -16,11 +16,11 @@ from dataclasses import dataclass
 import pandas as pd
 from backtesting import Strategy
 from backtesting.lib import FractionalBacktest
-from entry_rules import should_open_long
-from exit_rules import should_close_long
-from fetch_kucoin_candles import load_ohlcv_kucoin
+from entry_exit.entry_rules import should_open_long
+from entry_exit.exit_rules import should_close_long
+from fetch_data.fetch_kucoin_candles import load_ohlcv_kucoin
 from strategy_logic import build_strategy_series
-from trail_rules import compute_long_trail_candidate, update_long_trail_stop
+from SL_TP.trail_rules import compute_long_trail_candidate, update_long_trail_stop
 
 
 
@@ -140,7 +140,7 @@ class BitcoinMomentumStrategy(Strategy):
         self._close_position_if_needed(close_now, htf_ema_now)
 
 
-def run_backtest(df: pd.DataFrame) -> pd.Series:
+def run_backtest(df: pd.DataFrame) -> tuple[pd.Series, FractionalBacktest]:
     bt = FractionalBacktest(
         df,
         BitcoinMomentumStrategy,
