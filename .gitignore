@@ -1,0 +1,38 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual environments
+.venv/
+venv/
+ENV/
+env/
+
+# Jupyter notebooks
+.ipynb_checkpoints
+
+# IDE files
+.vscode/
+.idea/
+
+# Logs and caches
+*.log
+*.cache
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Backtesting volume / temp
+*.db
+
+# Github Copilot and local settings
+*.sublime-workspace
+*.sublime-project
+
+# data file dumps
+*.csv
+*.h5
+*.parquet
+*.pkl
