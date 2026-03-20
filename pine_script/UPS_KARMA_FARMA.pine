@@ -1,0 +1,1185 @@
+// This source code is subject to the terms of the Mozilla Public License 2.0 at https://mozilla.org/MPL/2.0
+// © ZenAndTheArtOfTrading.com | 0.000035c = Pepperstone USD commission cost per unit ($3.5 per lot, $7 per trade)
+// Ultimate Pullback Strategy
+// @version=6
+strategy(title="Ultimate Pullback Strategy", shorttitle="UPS v3.25", overlay=true, margin_long=0, margin_short=0, max_bars_back=5000, max_labels_count=500, initial_capital=10000, risk_free_rate=4.83)
+
+// Import required libraries
+import ZenAndTheArtOfTrading/ZenTradingViewStrategyLibrary/2 as tv
+import ZenAndTheArtOfTrading/ZenLibrary/12 as zen
+import ZenAndTheArtOfTrading/PineConnector/2 as pc
+
+// Plot version to data window
+plot(na, title="UPS v3.25 | 22/10/25", display=display.data_window)
+
+// --- BEGIN USER INPUT { //
+// Display Settings
+var const string g_display      = "Display Settings"
+bool extendedTargets            = input.bool(title="Draw Extended Stops & Targets", defval=true, group=g_display, tooltip="Turns on/off extended stops & targets drawing across your chart until either is hit", display=display.none)
+bool displayWarnings            = input.bool(title="Draw Warnings For Questionable Trades", defval=true, group=g_display, tooltip="Turns on/off orange warnings when a trade hits its take-profit AND stop-loss on the same bar (true outcome requires manually confirmation)", display=display.none)
+bool drawRealTime               = input.bool(title="Draw Signals on Real-Time Bars", defval=false, group=g_display, tooltip="Turn this on if you want signals to 'repaint' (draw on real-time bars). This is useful for preparing to enter trades ahead of time, or for backtesting in bar replay.", display=display.none)
+bool drawTester                 = input.bool(title="Draw Backtester Results", defval=false, group=g_display, tooltip="Turns on/off the custom backtester (WARNING: USE AT OWN RISK - ALWAYS CONFIRM RESULTS THROUGH MANUAL TESTING!)", display=display.none)
+bool drawStats                  = input.bool(title="Draw Performance Stats", defval=true, group=g_display, tooltip="Turns on/off the inbuilt performance stats display (work in progress - only works for fixed profit target for now)", display=display.none)
+string statsPosition            = input.string(title="Stats Display Position", defval="TR", options=["TR", "BR", "BL"], group=g_display, tooltip="Select where to position performance stats table (also moves backtester table to opposite location)", display=display.none)
+bool s_totalTrades              = input.bool(title="Total Trades", defval=true, group=g_display, inline="stats", tooltip="Select which metrics to display in the strategy performance stats table", display=display.none)
+bool s_totalBE                  = input.bool(title="Break-Even", defval=false, group=g_display, inline="stats", display=display.none)
+bool s_totalWL                  = input.bool(title="Win/Loss", defval=false, group=g_display, inline="stats", display=display.none)
+bool s_avgRR                    = input.bool(title="R:R", defval=true, group=g_display, inline="stats", display=display.none)
+// Stops & Targets Settings
+var const string g_pl           = "Stops & Targets"
+float stopPips                  = input.float(title="Stop Loss Fixed Pips", defval=0.0, step=1.0, group=g_pl, tooltip="Your stop loss distance in pips (optional - set to zero to disable)", display=display.none)
+float stopMultiplier            = input.float(title="Stop Loss ATR Multiplier", defval=1.0, minval=0.1, step=0.1, group=g_pl, tooltip="Your stop loss distance as a multiplier of the ATR", display=display.none)
+float riskRewardMultiplier      = input.float(title="Risk:Reward", defval=1.0, minval=0.1, step=0.1, group=g_pl, tooltip="Your risk:reward profile for any valid setups that are detected (calculated from closing price of setup)", display=display.none)
+float stopBreakEvenMultiplier   = input.float(title="Break Even Distance", defval=0.0, minval=0.0, step=0.1, group=g_pl, tooltip="Your break even risk:reward profile (optional - set to zero to disable)", display=display.none)
+float minimumRR                 = input.float(title="Minimum R:R To PB Origin", defval=0.0, minval=0.0, step=1.0, group=g_pl, tooltip="The minimum risk:reward required between your entry price and the pullback origin (optional - set to zero to disable)", display=display.none)
+string pbReference              = input.string(title="PB Origin Reference", defval="Close", options=["Close", "Wick"], group=g_pl, tooltip="Which price source to reference when detecting pullback origin for the above setting", display=display.none)
+string slReference              = input.string(title="SL Price Reference", defval="High/Low", options=["High/Low", "Open", "Close"], group=g_pl, tooltip="Choose which price source to use when calculating the stop loss distance.", display=display.none)
+float minimumSL                 = input.float(title="Minimum Stop Loss Pips", defval=0.0, minval=0.0, group=g_pl, tooltip="(Set to 0 to disable) Setting this to a positive number will ensure the SL distance is at least this many pips (eg - setting it to 10 means SL will be a minimum of 10 pips away)", display=display.none)
+string minimumSLAction          = input.string(title="Minium SL Action", defval="Ignore Trade", group=g_pl, options=["Ignore Trade", "Override"], tooltip="Ignore Trade means the signal is ignored if the SL is too small, Override means the stop loss distance will be overridden to the minimum distance when necessary", display=display.none)
+float maximumSL                 = input.float(title="Maximum Stop Loss Pips", defval=0.0, minval=0.0, group=g_pl, tooltip="(Set to 0 to disable) Setting this to a positive number will ensure the SL distance is at most this many pips (eg - setting it to 100 means SL will be a maximum of 100 pips away)", display=display.none)
+string maximumSLAction          = input.string(title="Maximum SL Action", defval="Ignore Trade", group=g_pl, options=["Ignore Trade", "Override"], tooltip="Ignore Trade means the signal is ignored if the SL is too large, Override means the stop loss distance will be overridden to the maximum distance when necessary", display=display.none)
+float slPipModifier             = input.float(title="SL Pip Modifier", defval=0, minval=0, group=g_pl, display=display.none, inline="mod")
+bool slPipModifierDivide        = input.bool(title="Divide", defval=true, group=g_pl,  display=display.none, inline="mod")
+bool slPipModifierMulti         = input.bool(title="Multiply", defval=false, group=g_pl, tooltip="(Optional) Used for markets like XAUUSD which requires division by 10. The on/off checkboxes treat this modifier as multiplication/division.", display=display.none, inline="mod")
+// MA Settings
+var const string g_ma           = "Moving Average Settings"
+string maType1                  = input.string(title="MA Type #1", defval="EMA", options=["EMA", "SMA", "HMA", "WMA", "DEMA", "VWMA", "VWAP", "KAMA", "FRAMA"], group=g_ma, tooltip="This is your main Moving Average", display=display.none)
+string maType2                  = input.string(title="MA Type #2", defval="EMA", options=["EMA", "SMA", "HMA", "WMA", "DEMA", "VWMA", "VWAP", "KAMA", "FRAMA"], group=g_ma, tooltip="This is your secondary MA filter (optional)", display=display.none)
+int maLength1                   = input.int(title="MA Length #1", defval=50, minval=1, step=50, group=g_ma, tooltip="MA #1's Length / Period", display=display.none)
+int maLength2                   = input.int(title="MA Length #2", defval=0, minval=0, step=50, group=g_ma, tooltip="MA #2's Length / Period (set to zero to disable)", display=display.none)
+int kamaFast                    = input.int(title="KAMA Fast Period", defval=2,  minval=1, group=g_ma, tooltip="Fast smoothing period for KAMA (only used when MA type is KAMA)", display=display.none)
+int kamaSlow                    = input.int(title="KAMA Slow Period", defval=30, minval=1, group=g_ma, tooltip="Slow smoothing period for KAMA (only used when MA type is KAMA)", display=display.none)
+int maxCandlesBeyondMA          = input.int(title="Max Candles Beyond MA", defval=1, minval=0, step=1, group=g_ma, tooltip="How many candles are allowed to close beyond MA #1 before a setup is invalidated", display=display.none)
+int maConsolidationLookback     = input.int(title="Consolidation Lookback", defval=10, minval=0, group=g_ma, tooltip="How far back to count price crosses of MA #1 (used to filter out consolidation)", display=display.none)
+int maConsolidationCount        = input.int(title="Max Consolidation Count", defval=4, group=g_ma, tooltip="Max number of times price can cross MA #1 over the lookback period (used to filter out consolidation)", display=display.none)
+// Intelligent Trend Filter
+var const string g_iq           = "Intelligent Trend Filter"
+bool useIQFilter                = input.bool(title="Use Intelligent Trend Filter", defval=false, group=g_iq, tooltip="Uses a trend-quality score to reduce sideways pullback entries", display=display.none)
+int iqLookback                  = input.int(title="Score Lookback", defval=20, minval=5, group=g_iq, tooltip="Lookback used by efficiency, slope and MA bias scoring", display=display.none)
+float iqMinScore                = input.float(title="Minimum Trend Score", defval=0.55, minval=0.0, maxval=1.0, step=0.01, group=g_iq, tooltip="Higher values filter more trades", display=display.none)
+float iqSlopeATRScale           = input.float(title="Slope Scale (ATR)", defval=1.5, minval=0.1, step=0.1, group=g_iq, tooltip="Larger value makes slope component less strict", display=display.none)
+float iqERWeight                = input.float(title="Weight: Efficiency", defval=0.5, minval=0.0, maxval=1.0, step=0.05, group=g_iq, inline="iqw", display=display.none)
+float iqSlopeWeight             = input.float(title="Slope", defval=0.3, minval=0.0, maxval=1.0, step=0.05, group=g_iq, inline="iqw", display=display.none)
+float iqBiasWeight              = input.float(title="MA Bias", defval=0.2, minval=0.0, maxval=1.0, step=0.05, group=g_iq, inline="iqw", display=display.none)
+bool useSQBoost                 = input.bool(title="Use Signal Quality Boost", defval=false, group=g_iq, tooltip="Boosts trend score when the individual setup is strong (rescues good signals in weaker trends)", display=display.none)
+float sqBoostWeight             = input.float(title="Signal Boost Weight", defval=0.3, minval=0.0, maxval=1.0, step=0.05, group=g_iq, tooltip="Maximum boost from signal quality (added to trend score before comparing to minimum)", display=display.none)
+int sqVolLookback               = input.int(title="Volume MA Lookback", defval=20, minval=5, group=g_iq, tooltip="Lookback for average volume used in signal quality scoring", display=display.none)
+// Setup Detection Patterns
+var const string g_c_patterns   = "Candle Patterns"
+bool longTrades                 = input.bool(title="Detect Long Trades", defval=true, group=g_c_patterns, tooltip="Turn on/off long trades", display=display.none)
+bool shortTrades                = input.bool(title="Detect Short Trades", defval=true, group=g_c_patterns, tooltip="Turn on/off short trades", display=display.none)
+bool showEC                     = input.bool(title="Detect Engulfing Candles", defval=true, group=g_c_patterns, tooltip="Turns on/off fractal engulfing candle detection", display=display.none)
+bool ecWick                     = input.bool(title="Engulfing Candle Must Engulf Wick", defval=false, group=g_c_patterns, tooltip="This setting determines if engulfing candles must engulf the wick or just the body", display=display.none)
+bool showHS                     = input.bool(title="Detect Hammers & Shooting Stars", defval=false, group=g_c_patterns, tooltip="Turns on/off hammers & shooting star detection", display=display.none)
+bool colorMatch                 = input.bool(title="Hammers & Stars Must Match Color", defval=false, group=g_c_patterns, tooltip="This setting determines if hammers must be green and shooting stars must be red", display=display.none)
+bool showDJ                     = input.bool(title="Detect Doji Candles", defval=false, group=g_c_patterns, tooltip="Turns on/off fractal doji candle detection", display=display.none)
+bool dojiType                   = input.bool(title="Doji Can Be Bullish & Bearish", defval=false, group=g_c_patterns, tooltip="This setting determines if long dojis must be green and short dojis must be red", display=display.none)
+bool showTCSC                   = input.bool(title="Detect Fractal Color Change Candles", defval=false, group=g_c_patterns, tooltip="Turns on/off swing high & low reversal candle detection", display=display.none)
+bool mustTouchMA                = input.bool(title="Must Touch MA #1?", defval=false, group=g_c_patterns, tooltip="This setting determines if any of the above candle patterns must touch MA#1 to be considered valid", display=display.none)
+// Setup Detection Filters
+var const string g_c_settings   = "Candle Settings"
+float atrMaxSize                = input.float(title="Max Candle Size To Detect (× ATR)", defval=2.5, minval=0.0, step=0.1, group=g_c_settings, tooltip="Maximum size of setup candles (as a multiplier of the current ATR)", display=display.none)
+float rejectionWickMaxSize      = input.float(title="Max Rejection Wick Size EC (× Body)", defval=0.0, minval=0.0, step=0.1, group=g_c_settings, tooltip="Maximum size of engulfing candle's rejection wick (compared to the body)", display=display.none)
+float hammerFib                 = input.float(title="Star & Hammer Close %", defval=0.3, minval=0.1, step=0.01, group=g_c_settings, tooltip="The closing price % in relation to the candle size for validating hammers & shooting stars (eg. 0.3 = hammer must close in upper 30% of the bar)", display=display.none)
+float hammerSize                = input.float(title="Star & Hammer Minimum Size (× ATR)", defval=0.1, minval=0.1, step=0.01, group=g_c_settings, tooltip="The minimum hammer/star candle size compared to ATR (to prevent detecting tiny hammers & stars)", display=display.none)
+float dojiSize                  = input.float(title="Doji Size (% of candle size)", defval=0.05, step=1.0, group=g_c_settings, tooltip="Doji's maximum size as a % in relation to the candle size (eg. 0.05 = body is 5% of total bar size)", display=display.none)
+float dojiWickSize              = input.float(title="Max Doji Wick Size (× Other Wick)", defval=2.0, step=0.1, group=g_c_settings, tooltip="Doji's maximum wick size (eg. 2 = bottom wick must be less than or equal to 2x the top wick - used to differentiate indecision candles from hammers & stars)", display=display.none)
+// Exit Settings
+var const string g_exits        = "Exit Settings"
+int rsiLength                   = input.int(title="RSI Length", defval=7, minval=1, step=1, group=g_exits, tooltip="RSI Length / Period (used for RSI-based exit reasons)", display=display.none)
+float rsiOB                     = input.float(title="RSI O/B", defval=80.0, step=1.0, group=g_exits, tooltip="RSI Overbought threshold (used for RSI-based exit reasons)", display=display.none)
+float rsiOS                     = input.float(title="RSI O/S", defval=20.0, step=1.0, group=g_exits, tooltip="RSI Oversold threshold (used for RSI-based exit reasons)", display=display.none)
+float trailStopSize             = input.float(title="ATR Trailing Stop Multiplier", defval=1.0, minval=0.1, step=0.1, group=g_exits, tooltip="The ATR multiplier for ATR-based trailing stop", display=display.none)
+string trailSource              = input.string(title="ATR Trailing Stop Source", defval="High/Low", options=["High/Low", "Close", "Open"], group=g_exits, tooltip="The price source for calculating ATR trailing stop", display=display.none)
+bool trailStop                  = input.bool(title="Use ATR Trailing Stop", defval=false, group=g_exits, tooltip="Turns on/off the ATR trailing stop exit method", display=display.none)
+bool exitType1                  = input.bool(title="Use RSI Engulfing Exit", defval=false, group=g_exits, tooltip="Turns on/off the RSI engulfing candle exit method (eg. if RSI goes overbought and bearish engulfing candle is detected, long trade is exited)", display=display.none)
+bool exitType2                  = input.bool(title="Use RSI Exhaustion Exit", defval=false, group=g_exits, tooltip="Turns on/off the RSI exhaustion exit method (eg. if RSI goes oversold and a green candle is detected, short trade is exited)", display=display.none)
+bool exitType3                  = input.bool(title="Use HC/LC Exit", defval=false, group=g_exits, tooltip="Turns on/off the higher-close exit method (eg. if involved in a long trade and a lower-close is detected, long trade is exited)", display=display.none)
+bool exitType4                  = input.bool(title="Use HC/LC x2 Exit", defval=false, group=g_exits, tooltip="Turns on/off the higher-close x2 exit method (eg. if involved in a short trade and a higher-close is detected twice in a row, short trade is exited)", display=display.none)
+bool exitType5                  = input.bool(title="Use MA Breach Exit", defval=false, group=g_exits, tooltip="Turns on/off the MA breach exit method (eg. if involved in a long trade and price closes below MA #1, long trade is exited)", display=display.none)
+bool exitType6                  = input.bool(title="Use PB Origin Exit", defval=false, group=g_exits, tooltip="Turns on/off the PB Origin exit method (eg. exits trade at the closing price of where pullback started", display=display.none)
+string exitTime                 = input.session(title="Time To Close Trades", defval="2200-2300", group=g_exits, tooltip="Time of day to close all trades (in EXCHANGE's time zone)", display=display.none)
+string exitTimeType             = input.string(title="When?", defval="Never", options=["Never","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday","Everyday"], group=g_exits, tooltip="When to execute the time-based exit", display=display.none)
+// Time filter settings
+var const string g_time         = "Time Filters"
+bool monday                     = input.bool(title="MON", defval=true, inline="days", group=g_time, tooltip="Which days to trade on", display=display.none)
+bool tuesday                    = input.bool(title="TUE", defval=true, inline="days", group=g_time)
+bool wednesday                  = input.bool(title="WED", defval=true, inline="days", group=g_time)
+bool thursday                   = input.bool(title="THU", defval=true, inline="days", group=g_time)
+bool friday                     = input.bool(title="FRI", defval=true, inline="days", group=g_time)
+bool saturday                   = input.bool(title="SAT", defval=true, inline="days", group=g_time)
+bool sunday                     = input.bool(title="SUN", defval=true, inline="days", group=g_time)
+bool useTimeFilter              = input.bool(title="Use Time Session Filter", defval=false, group=g_time, tooltip="Turns on/off time session filter", display=display.none)
+string timeSession              = input.session(title="Time Session To Ignore Trades", defval="0600-0915", group=g_time, tooltip="Time session to ignore trades (useful for backtesting and ignoring times you are asleep/at work/etc)", display=display.none)
+int startTime                   = input.time(title="Start Filter", defval=timestamp("01 Jan 2000 13:30 +0000"), group=g_time, tooltip="Start date & time to begin searching for setups", display=display.none)
+int endTime                     = input.time(title="End Filter", defval=timestamp("1 Jan 2099 19:30 +0000"), group=g_time, tooltip="End date & time to stop searching for setups", display=display.none)
+// Lookback Settings
+var const string g_lookback     = "Lookback Settings"
+int lookback                    = input.int(title="Lookback For Swing High/Low", defval=5, minval=0, step=1, group=g_lookback, tooltip="How many bars to look back to identify swing highs & lows (used for stop loss placement and validating swing high/low setups)", display=display.none)
+int maBreachLookback            = input.int(title="Lookback For MA Breach", defval=5, minval=0, step=1, group=g_lookback, tooltip="How many bars to look back to count candles that close beyond MA #1 (used for filtering out setups that occur after MA has been breached)", display=display.none)
+// Miscellaneous Settings
+var const string g_misc         = "Miscellaneous Settings"
+int atrLength                   = input.int(title="ATR Length", defval=14, minval=1, step=1, group=g_misc, tooltip="Your ATR length / period (used for calculating stop loss)", display=display.none)
+int pointAllowance              = input.int(title="Point Allowance", defval=0, minval=0, step=1, group=g_misc, tooltip="This is how many points to allow for candle patterns to be slightly off (eg. 1 means that engulfing candles can be 1 point off being an actual engulfing - useful for markets with lots of micro gaps)", display=display.none)
+bool roundSL                    = input.bool(title="Round SL Size", defval=true, group=g_misc, tooltip="Turns on/off rounding the stop loss size (used for backtesting)", display=display.none)
+// Backtester Settings
+var const string g_tester       = "Backtester Settings"
+bool useFixedFractional         = input.bool(title="Use Fixed Fractional", defval=true, group=g_tester, tooltip="Use fixed fractional % of balance as risk instead of a fixed position size.", display=display.none)
+bool ignoreCompounding          = input.bool(title="Ignore Compounding", defval=false, group=g_tester, tooltip="This will force the script to use initial equity for risk calculations instead of current equity. Used for fixed risk $ amount. eg. If you turn this on with a starting balance of 10,000 and 1% risk set below, then the script will only ever risk $100 per trade and will ignore compounding.", display=display.none)
+bool useCurTf                   = input.bool(title="Use Intrabar For Position Sizing", defval=false, group=g_tester, tooltip="Use intrabar prices for position sizing instead of yesterday's price (improves pos size accuracy but limits bar replay significantly)", display=display.none)
+float riskPerTrade              = input.float(title="Risk Per Trade", defval=1.0, group=g_tester, tooltip="Your desired risk per trade (as a whole number)", display=display.none)
+string breakEvenTreatment       = input.string(title="Break-Even Treatment", defval="Exclude", options=["Count As Win", "Count As Loss", "Exclude"], group=g_tester, tooltip="How to treat break-even trades on the performance statistics display table's Win Rate %. Exclude = exclude break-even trades from the win rate % calculation, Count As Loss = extremely conservative, Count As Win = optimistic", display=display.none)
+float monteCarloSkipChance      = input.float(title="Monte Carlo Skip %", defval=0, minval=0, maxval=100, group=g_tester, tooltip="Monte Carlo Skip Trade Chance (0-100%)", display=display.none)
+float monteCarloSpread          = input.float(title="Monte Carlo Spread", defval=0, group=g_tester, tooltip="Randomize limit order execution price by this spread +/- based on Monte Carlo Spread Chance", display=display.none)
+int monteCarloCycle             = input.int(title="MCS Cycle", defval=0, group=g_tester, tooltip="This is just a way to auto-refresh the script - click the up/down arrows to force the chart to re-analyze price with new Monte Carlo randomness applied.", display=display.none)
+bool monteCarloSpreadNegative   = input.bool(title="MCS Only Negative", defval=true, group=g_tester, inline="mcs", tooltip="MCS Only Negative = MC Spread only hurts trades never helps, MCS Take-Profit = MC Spread affects take profit, MCS Stop-Loss = MC Spread affects stop loss", display=display.none)
+bool monteCarloSpreadTP         = input.bool(title="MCS Take-Profit", defval=true, group=g_tester, inline="mcs", display=display.none)
+bool monteCarloSpreadSL         = input.bool(title="MCS Stop-Loss", defval=true, group=g_tester, inline="mcs", display=display.none)
+// Monthly Performance Table Settings
+var string g_mpt                = "Monthly Performance Table"
+bool mptable_on                 = input.bool(title="Turn On |", defval=false, display=display.none, group=g_mpt, inline="MPT_Toggles")
+bool mptable_debug              = input.bool(title="Debug Mode |", defval=false, display=display.none, group=g_mpt, inline="MPT_Toggles")
+int mptable_precision           = input.int(title="Decimal Precision", defval=2, minval=1, display=display.none, group=g_mpt, inline="MPT_Toggles", tooltip="Decimal precision of each cell")
+color mptable_titleColor        = input.color(title="Title Cell Color", defval=#cccccc, display=display.none, group=g_mpt, inline="MPT_Colors")
+color mptable_titleTextColor    = input.color(title="Title Text Color", defval=#363a45, display=display.none, group=g_mpt, inline="MPT_Colors")
+color rmptable_textColor        = input.color(title="Cell Text Color", defval=color.white, display=display.none, group=g_mpt, inline="MPT_Colors")
+color mptable_ProfitColor       = input.color(title="Year Profit Color", defval=color.new(color.green, 50), display=display.none, group=g_mpt, inline="MPT_Colors")
+color mptable_LossColor         = input.color(title="Year Loss Color", defval=color.new(color.red, 50), display=display.none, group=g_mpt, inline="MPT_Colors")
+color mptable_BreakEvenColor    = input.color(title="Year B/E Color", defval=color.new(color.white, 50), display=display.none, group=g_mpt, inline="MPT_Colors")
+int mptable_pageNumber          = input.int(title="Page Number", defval=1, minval=1, step=1, maxval=10, display=display.none, group=g_mpt, tooltip="Which page of results to display") - 1 
+int mptable_pageSize            = input.int(title="Page Size (Rows)", defval=20, minval=1, display=display.none, group=g_mpt, tooltip="How many rows to display") - 1
+string mptable_tableTextSize    = input.string(title="Text Size", defval="Small", options=["Auto",  "Huge",  "Large", "Normal", "Small", "Tiny"], display=display.none, group=g_mpt)
+// PC Settings
+var const string g_pc           = "PC Settings"
+bool usePC           = input.bool(title="Use PC / Accept Disclaimer", defval=false, group=g_pc, tooltip="If accepted, when you set alert() function call then PC commands will be automatically triggered by the script. You can find the PC disclaimer in the UPI course.", display=display.none)
+bool pc_debug                   = input.bool(title="Debug Automation Alerts", defval=true, group=g_pc, tooltip="Turns on/off label that displays what your alert message will look like if it gets sent to PC (useful for debugging errors or issues)", display=display.none)
+string pc_id                    = input.string(title="License ID", defval="ID", group=g_pc, tooltip="This is your PC license ID", display=display.none)
+float pc_risk                   = input.float(title="Risk Per Trade", defval=1, step=0.5, group=g_pc, tooltip="This is how much to risk per trade (% of account balance OR lots - which one is used depends on your PC settings)", display=display.none)
+float pc_accfilter              = input.float(title="Account Filter", defval=0, group=g_pc, tooltip="Stop the EA if the account balance falls below this number", display=display.none)
+float pc_spreadFilter           = input.float(title="Spread Filter", defval=0, group=g_pc, tooltip="Optional spread filter - will only execute trades if the current market spread is below this pip amount. Zero to disable", display=display.none)
+float pc_beOffset               = input.float(title="Break-Even Offset", defval=0.1, minval=0.0, group=g_pc, tooltip="Enter your pip break-even offset (only used when break-even setting is enabled - adds this distance to your entry price to defend against slippage/commission drag)", display=display.none)
+float pc_limitOffset            = input.float(title="Limit Order Offset", defval=0, group=g_pc, tooltip="Increase distance for entry limit orders from market price by this many pips", display=display.none)
+bool pc_limit                   = input.bool(title="Use Limit Order", defval=true, group=g_pc, tooltip="If true a limit order will be used, if false a market order will be used", display=display.none)
+bool pc_pipEntry                = input.bool(title="Use Pip-Based Entry", defval=true, group=g_pc, tooltip="Turn this on to place limit order entries in pips from current market price instead of as a fixed price", display=display.none)
+bool pc_pipTarget               = input.bool(title="Use Pip-Based SL & TP", defval=true, group=g_pc, tooltip="Turn this on if you want to use a pip-based TP & SL, turn it off if you want to use a TradingView price-based TP & SL. Watch Update v3.05 course video for more info", display=display.none)
+bool pc_cancelOrders            = input.bool(title="Cancel Missed Orders", defval=true, group=g_pc, tooltip="If a limit order is not filled by the broker due to spread, but the UPI treats the order as if it still played out as a valid trade, then cancel any leftover pending orders when a TP is hit to avoid leaving unwanted LOs in the market.", display=display.none)
+string pc_prefix                = input.string(title="Symbol Prefix", defval="", group=g_pc, tooltip="(Optional) MetaTrader symbol prefix (eg. a.EURUSD would be a.)", display=display.none)
+string pc_suffix                = input.string(title="Symbol Suffix", defval="", group=g_pc, tooltip="(Optional) MetaTrader symbol suffix (eg. EURUSD.a would be .a)", display=display.none)
+string pc_overrideSymbol        = input.string(title="Symbol Override", defval="", group=g_pc, tooltip="(Optional) This will override the symbol ticker sent to PC entirely with whatever ticker is put in here. Only should be used if the symbol you want to trade on MetaTrader doesn't match the TradingView ticker at all.", display=display.none)
+string pc_comment               = input.string(title="Comment", defval="", group=g_pc, tooltip="(Optional) This allows for multi-strategy setups by adding this string as a 'comment' parameter to any orders sent to PC. Useful for running multiple UPI strategies on the same market across different timeframes or with different parameters.", display=display.none)
+string pc_secret                = input.string(title="Secret Key", defval="", group=g_pc, tooltip="(Optional) This sends a secret key along with your alerts (must be set up in the PC dashboard first for this to work!)", display=display.none)
+// } END USER INPUT --- //
+
+// --- ADAPTIVE MA FUNCTIONS { //
+
+// Kaufman's Adaptive Moving Average
+calcKAMA(float src, int length, int fast, int slow) =>
+    float fastest = 2.0 / (fast + 1)
+    float slowest = 2.0 / (slow + 1)
+    float direction = math.abs(src - src[length])
+    float vol = math.sum(math.abs(src - src[1]), length)
+    float er = vol != 0.0 ? direction / vol : 0.0
+    float sc = math.pow(er * (fastest - slowest) + slowest, 2)
+    var float result = na
+    result := na(result[1]) ? src : result[1] + sc * (src - result[1])
+    result
+
+// Fractal Adaptive Moving Average
+calcFRAMA(float src, int length) =>
+    int half = math.round(length / 2)
+    float hh1 = ta.highest(src, half)
+    float ll1 = ta.lowest(src, half)
+    float hh2 = ta.highest(src[half], half)
+    float ll2 = ta.lowest(src[half], half)
+    float hh  = ta.highest(src, length)
+    float ll  = ta.lowest(src, length)
+    float r1  = hh1 - ll1
+    float r2  = hh2 - ll2
+    float rt  = hh  - ll
+    float dimen = (r1 > 0 and r2 > 0 and rt > 0) ? (math.log(r1 + r2) - math.log(rt)) / math.log(2) : 1.0
+    dimen := math.max(1.0, math.min(2.0, dimen))
+    float alpha = math.max(0.01, math.min(1.0, math.exp(-4.6 * (dimen - 1.0))))
+    var float result = na
+    result := na(result[1]) ? src : alpha * src + (1.0 - alpha) * result[1]
+    result
+
+// Unified MA getter — falls back to zen.getMA for all non-adaptive types
+getMA(int length, string maType) =>
+    if maType == "KAMA"
+        calcKAMA(close, length, kamaFast, kamaSlow)
+    else if maType == "FRAMA"
+        calcFRAMA(close, length)
+    else
+        zen.getMA(length, maType)
+
+// } END ADAPTIVE MA FUNCTIONS --- //
+
+// --- GET GENERAL VARIABLES { //
+
+// Prepare persistent strategy variables (used for various trade-related checks later)
+var bool USE_BREAK_EVEN = stopBreakEvenMultiplier != 0.0
+var bool USE_EXIT_REASON = exitType1 or exitType2 or exitType3 or exitType4 or exitType5 or trailStop
+    
+// Get how many decimals are in this market's quoted price
+var float decimals = zen.getDecimals()
+
+// Get indicator values
+float ma1 = getMA(maLength1, maType1)
+float ma2 = getMA(maLength2 <= 0 ? 1 : maLength2, maType2) // If MA2 is 0 then it's disabled, but we must use > 0 as length
+float rsi = ta.rsi(close, rsiLength)
+float atr = ta.atr(atrLength)
+
+// } END GENERAL VARIABLES --- //
+// Build symbol ticker 
+var string PC_SYMBOL = pc_overrideSymbol == "" ? pc_prefix + syminfo.ticker + pc_suffix : pc_overrideSymbol
+
+// Convert given price diff into whole number pips (for display purposes & PineConnector alerts only)
+getSLModified(float priceDiff) =>
+    float _pips = zen.toWhole(math.abs(priceDiff))
+    if (slPipModifier > 0 and slPipModifierDivide)
+        _pips := _pips / slPipModifier
+    else if (slPipModifier > 0 and slPipModifierMulti)
+        _pips := _pips * slPipModifier
+    _pips := roundSL ? math.round(_pips) : _pips
+    _pips
+
+// --- GET GENERAL STRATEGY FILTERS & CONDITIONS { //
+// Determines if now is when we should exit any open trades
+bool exitTimeTriggered = false 
+if (exitTimeType == "Never")
+    exitTimeTriggered := false 
+else if (exitTimeType == "Monday" or exitTimeType == "Everyday")
+    exitTimeTriggered := dayofweek == dayofweek.monday and zen.barInSession(exitTime) and barstate.isconfirmed
+else if (exitTimeType == "Tuesday" or exitTimeType == "Everyday")
+    exitTimeTriggered := dayofweek == dayofweek.tuesday and zen.barInSession(exitTime) and barstate.isconfirmed
+else if (exitTimeType == "Wednesday" or exitTimeType == "Everyday")
+    exitTimeTriggered := dayofweek == dayofweek.wednesday and zen.barInSession(exitTime) and barstate.isconfirmed
+else if (exitTimeType == "Thursday" or exitTimeType == "Everyday")
+    exitTimeTriggered := dayofweek == dayofweek.thursday and zen.barInSession(exitTime) and barstate.isconfirmed
+else if (exitTimeType == "Friday" or exitTimeType == "Everyday")
+    exitTimeTriggered := dayofweek == dayofweek.friday and zen.barInSession(exitTime) and barstate.isconfirmed
+else if (exitTimeType == "Saturday" or exitTimeType == "Everyday")
+    exitTimeTriggered := dayofweek == dayofweek.saturday and zen.barInSession(exitTime) and barstate.isconfirmed
+else if (exitTimeType == "Sunday" or exitTimeType == "Everyday")
+    exitTimeTriggered := dayofweek == dayofweek.sunday and zen.barInSession(exitTime) and barstate.isconfirmed
+
+// Determines if the current price bar falls inside the specified session
+bool timeFilter = not exitTimeTriggered and (not useTimeFilter or not zen.barInSession(timeSession, useTimeFilter))
+bgcolor(exitTimeTriggered ? color.new(color.orange, 50) : na)
+
+// See if this bar's time happened within date filter range
+bool dateFilter = zen.dateFilter(startTime, endTime)
+
+// See if today is enabled for trading in the settings menu
+bool dayFilter = zen.dayFilter(monday, tuesday, wednesday, thursday, friday, saturday, sunday)
+
+// Is price above the MA?
+bool priceAboveMA = not na(ma1) and close > ma1
+
+// Check how many recent candles closed beyond MA
+int candlesBelowMA = zen.barsBelowMA(maBreachLookback, ma1)
+int candlesAboveMA = zen.barsAboveMA(maBreachLookback, ma1)
+
+// Check how many times price crossed MA #1 recently
+int maCrossCount = zen.barsCrossedMA(maConsolidationLookback, ma1)
+bool maCrossFilter = maCrossCount < maConsolidationCount
+
+// Intelligent trend score components
+float netMove = math.abs(close - close[iqLookback])
+float totalMove = math.sum(math.abs(close - close[1]), iqLookback)
+float efficiencyRatio = totalMove != 0 ? netMove / totalMove : 0.0
+float slopeRaw = atr != 0 ? math.abs(ma1 - ma1[iqLookback]) / atr : 0.0
+float slopeScore = math.min(slopeRaw / iqSlopeATRScale, 1.0)
+float biasLongScore = zen.barsAboveMA(iqLookback, ma1) / iqLookback
+float biasShortScore = zen.barsBelowMA(iqLookback, ma1) / iqLookback
+
+float weightSum = iqERWeight + iqSlopeWeight + iqBiasWeight
+float longTrendScore = weightSum > 0 ? ((efficiencyRatio * iqERWeight) + (slopeScore * iqSlopeWeight) + (biasLongScore * iqBiasWeight)) / weightSum : 0.0
+float shortTrendScore = weightSum > 0 ? ((efficiencyRatio * iqERWeight) + (slopeScore * iqSlopeWeight) + (biasShortScore * iqBiasWeight)) / weightSum : 0.0
+// Signal quality boost (rescues good setups in weaker trends)
+float sqCandleStrength = (high - low) != 0 ? math.abs(close - open) / (high - low) : 0.0
+float sqVolAvg = ta.sma(nz(volume), sqVolLookback)
+float sqVolScore = sqVolAvg > 0 ? math.min(nz(volume) / sqVolAvg, 2.0) / 2.0 : 0.5
+float sqMAProximity = not na(ma1) and atr > 0 ? 1.0 - math.min(math.abs(close - ma1) / (atr * 2), 1.0) : 0.0
+float signalQuality = (sqCandleStrength + sqVolScore + sqMAProximity) / 3.0
+float sqBoost = useSQBoost ? sqBoostWeight * signalQuality : 0.0
+
+bool iqLongFilter = not useIQFilter or (longTrendScore + sqBoost) >= iqMinScore
+bool iqShortFilter = not useIQFilter or (shortTrendScore + sqBoost) >= iqMinScore
+
+// Check our ATR Max Size condition to make sure candle isn't unreasonably large 
+bool atrMaxSizeCheck = zen.atrFilter(atr, atrMaxSize)
+
+// We need at least a 2 candle pullback
+bool bullishPB = zen.getPullbackBarCount(lookback, 1) >= 2
+bool bearishPB = zen.getPullbackBarCount(lookback, -1) >= 2
+
+// Check our conditions/filters
+bool generalConditionsMet = atrMaxSizeCheck and dateFilter and dayFilter and timeFilter and maCrossFilter and not na(atr) and not na(ma1)
+// Check long-specific conditions
+bool longConditionsMet = generalConditionsMet and iqLongFilter and candlesBelowMA <= maxCandlesBeyondMA and (maLength2 == 0 or ma1 > ma2) and (not mustTouchMA or (low <= ma1 or low[1] <= ma1)) and longTrades
+// Check short-specific conditions
+bool shortConditionsMet = generalConditionsMet and iqShortFilter and candlesAboveMA <= maxCandlesBeyondMA and (maLength2 == 0 or ma1 < ma2) and (not mustTouchMA or (high >= ma1 or high[1] >= ma1)) and shortTrades
+
+// Get required candlestick data for analyzing price patterns & filters
+float candleBodySize = zen.getBodySize()
+float topWickSize = zen.getTopWickSize()
+float bottomWickSize = zen.getBottomWickSize()
+// } END GENERAL STRATEGY FILTERS & CONDITIONS --- //
+
+// --- TRACK KEY PB LEVELS { //
+// Store bullish pullback data
+var float bullishClosePB = na
+var float bullishHighPB = na
+var float bullishLowPB = na
+
+// If price is above MA, check if we need to update key PB levels
+if (not na(ma1) and close > ma1)
+    // If current bar's high is higher than saved high, save new high
+    if (high > bullishHighPB or na(bullishHighPB))
+        bullishHighPB := high
+    // If current bar's close is higher than saved close, save new close
+    if (close > bullishClosePB)
+        bullishClosePB := close
+    // If current close is above MA and current low is lowest low, save it
+    if (close > ma1 and (low < bullishLowPB or na(bullishLowPB)) and (bearishPB or (low < low[1] and close < open)))
+        bullishLowPB := low
+    // If current bar closes higher than previous high, reset low
+    if (close > bullishHighPB[1])
+        bullishLowPB := na
+
+// If price crosses below the MA for more than a few bars, reset all of our bullish levels
+if (not na(ma1) and close < ma1 and close[1] < ma1 and close[2] > ma1)
+    bullishClosePB := na
+    bullishHighPB := na
+    bullishLowPB := na
+
+// If price crosses above the MA for more than a few bars, reset our bullish close to begin tracking new levels
+if (not na(ma1) and close > ma1 and close[1] > ma1 and close[2] < ma1)
+    bullishClosePB := close
+    bullishLowPB := na
+    bullishHighPB := na
+
+// Store bearish pullback data
+var float bearishClosePB = na
+var float bearishHighPB = na
+var float bearishLowPB = na
+
+// If price is below MA, check if we need to update key PB levels
+if (not na(ma1) and close < ma1)
+    // If current bar's low is lower than saved low, save new low
+    if (low < bearishLowPB or na(bearishLowPB))
+        bearishLowPB := low
+    // If current bar's close is lower than saved close, save new close
+    if (close < bearishClosePB)
+        bearishClosePB := close
+    // If current close is below MA and current high is highest high, save it
+    if (close < ma1 and (high > bearishHighPB or na(bearishHighPB)) and (bullishPB or (high > high[1] and close > open)))
+        bearishHighPB := high
+    // If current bar closes lower than previous low, reset high
+    if (close < bearishLowPB[1])
+        bearishHighPB := na
+
+// If price crosses above the MA for more than a few bars, reset all of our bearish levels
+if (not na(ma1) and close > ma1 and close[1] > ma1 and close[2] < ma1)
+    bearishClosePB := na
+    bearishHighPB := na
+    bearishLowPB := na
+
+// If price crosses below the MA for more than a few bars, reset our bearish close to begin tracking new levels
+if (not na(ma1) and close < ma1 and close[1] < ma1 and close[2] > ma1)
+    bearishClosePB := close
+    bearishHighPB := na
+    bearishLowPB := na
+
+// Override our bullish/bearish PB count based on a lookback determined by how many bars since a new swing low/high
+int pbLookbackBullish = ta.barssince(low == bearishLowPB)
+int pbLookbackBearish = ta.barssince(high == bullishHighPB)
+bullishPB := zen.getPullbackBarCount(pbLookbackBullish, 1) >= 2
+bearishPB := zen.getPullbackBarCount(pbLookbackBearish, -1) >= 2
+// } END TRACKING KEY PB LEVELS --- //
+
+// --- DETECT ENTRY PATTERNS { //
+var float allowance = syminfo.mintick * pointAllowance // This allows for engulfing candles that don't quite fully engulf due to micro gaps
+
+// Engulfing Candles
+bool bullishEngulfing = zen.isBullishEC(allowance, rejectionWickMaxSize, ecWick) and close < bullishClosePB and (low == bullishLowPB or low[1] == bullishLowPB)
+bool bearishEngulfing = zen.isBearishEC(allowance, rejectionWickMaxSize, ecWick) and close > bearishClosePB and (high == bearishHighPB or high[1] == bearishHighPB)
+
+// Extract from scope (https://www.tradingview.com/pine-script-docs/migration-guides/to-pine-version-6/#lazy-evaluation-of-conditions)
+float threeBarLow = ta.lowest(low, 3)
+float threeBarHigh = ta.highest(high, 3)
+
+// Hammers & Shooting Stars
+bool hammerCandle = zen.isHammer(hammerFib, colorMatch) and high - low >= hammerSize * atr and low == bullishLowPB and low == threeBarLow
+bool starCandle = zen.isStar(hammerFib, colorMatch) and high - low >= hammerSize * atr and high == bearishHighPB and high == threeBarHigh
+
+// Doji Candles
+bool bullishDoji = zen.isDoji(dojiWickSize, dojiSize) and (close > open or dojiType) and low == bullishLowPB and low == threeBarLow
+bool bearishDoji = zen.isDoji(dojiWickSize, dojiSize) and (close < open or dojiType) and high == bearishHighPB and high == threeBarHigh
+
+// TCSC Candles
+bool tcscBuy = close[1] < open[1] and close > open and low == bullishLowPB and close < bullishClosePB and low < low[1]
+bool tcscSell = close[1] > open[1] and close < open and high == bearishHighPB and close > bearishClosePB and high > high[1]
+
+// Determine if this candle meets our entry conditions
+bool validLongEntry = zen.isFlat() and priceAboveMA and longConditionsMet and bearishPB and (showEC and bullishEngulfing or showDJ and bullishDoji or showHS and hammerCandle or showTCSC and tcscBuy)
+bool validShortEntry = zen.isFlat() and not priceAboveMA and shortConditionsMet and bullishPB and (showEC and bearishEngulfing or showDJ and bearishDoji or showHS and starCandle or showTCSC and tcscSell)
+// } END DETECT ENTRY PATTERNS --- //
+
+// --- DETECT ENTRIES {
+
+// Prepare trade stats variables
+var int barsInTrade = 0
+var float highestPrice = 0.0
+var float lowestPrice = 0.0
+var float maxAdverseExcursion = 0.0
+var float maxFavorableExcursion = 0.0
+var float tradeStartEquity = 0.0
+
+// Prepare stops & targets etc.
+var float tradeStopPrice = 0.0
+var float tradeStopDistance = 0.0
+var float tradeTargetPrice = 0.0
+var float tradeTargetDistance = 0.0
+var float tradeBreakPrice = 0.0
+var float tradeEntryPrice = 0.0
+var bool lookForExit = false
+var bool lookForBE = false
+var bool trailingStop = false
+
+// Prepare stop loss price sources & size
+float longPriceSource     = slReference == "High/Low" ? (low < low[1] ? low : low[1]) : slReference == "Open" ? open : close
+float shortPriceSource    = slReference == "High/Low" ? (high > high[1] ? high : high[1]) : slReference == "Open" ? open : close
+float stopSize            = stopPips != 0.0 ? zen.toPips(stopPips) : atr * stopMultiplier
+
+// Calculate long stop
+float longStopPrice = longPriceSource - stopSize
+
+// Validate minimum long stop distance
+if (close - (longPriceSource - stopSize) < zen.toPips(minimumSL))
+    if (minimumSLAction == "Ignore Trade")
+        validLongEntry := false
+    else // Override minimum SL
+        longStopPrice   := close - zen.toPips(minimumSL)
+
+// Validate maximum long stop distance
+if (maximumSL > 0 and close - (longPriceSource - stopSize) > zen.toPips(maximumSL))
+    if (maximumSLAction == "Ignore Trade")
+        validLongEntry := false
+    else // Override maximum SL
+        longStopPrice   := close - zen.toPips(maximumSL)
+
+float longStopDistance = close - longStopPrice
+
+// Calculate short stop
+float shortStopPrice = shortPriceSource + stopSize
+
+// Validate minimum short stop distance
+if ((shortPriceSource + stopSize) - close < zen.toPips(minimumSL))
+    if (minimumSLAction == "Ignore Trade")
+        validShortEntry := false
+    else // Override minimum SL
+        shortStopPrice   := close + zen.toPips(minimumSL)
+
+// Validate maximum short stop distance
+if (maximumSL > 0 and (shortPriceSource + stopSize) - close > zen.toPips(maximumSL))
+    if (maximumSLAction == "Ignore Trade")
+        validShortEntry := false
+    else // Override maximum SL
+        shortStopPrice   := close + zen.toPips(maximumSL)
+
+float shortStopDistance   = shortStopPrice - close
+
+// Check our minimum R:R filter if it's active (for long trades)
+if (minimumRR > 0.0 and validLongEntry)
+    distanceToPB = (pbReference == "Close" ? bullishClosePB : bullishHighPB) - close
+    validLongEntry := distanceToPB / longStopDistance >= minimumRR
+
+// Check our minimum R:R filter if it's active (for short trades)
+if (minimumRR > 0.0 and validShortEntry)
+    distanceToPB = close - (pbReference == "Close" ? bearishClosePB : bearishLowPB)
+    validShortEntry := distanceToPB / shortStopDistance >= minimumRR
+
+// Check monte carlo 
+var int monteCarloSkipped = 0
+bool flagMonteCarlo = false
+bool skipMonteCarlo = zen.skipTradeMonteCarlo(monteCarloSkipChance)
+
+if (validLongEntry or validShortEntry)
+    if (skipMonteCarlo)
+        flagMonteCarlo := true 
+        validLongEntry := false 
+        validShortEntry := false
+        monteCarloSkipped := monteCarloSkipped + 1
+bgcolor(flagMonteCarlo ? color.yellow : na)
+
+// Handle long setup entry
+float longQty = zen.getPositionSize(riskPerTrade, longStopDistance, useCurrentTF=useCurTf, balance=ignoreCompounding ? strategy.initial_capital : strategy.equity)
+if (validLongEntry and (drawRealTime or barstate.isconfirmed))
+    // Save entry, stops, targets, position size, break-even price etc
+    tradeStopPrice := longStopPrice
+    tradeStopDistance := longStopDistance
+    tradeTargetPrice := exitType6 ? bullishClosePB : close + tradeStopDistance * riskRewardMultiplier
+    tradeTargetDistance := tradeTargetPrice - close
+    tradeBreakDistance = tradeStopDistance * stopBreakEvenMultiplier
+    tradeBreakPrice := close + tradeBreakDistance
+    tradeEntryPrice := close
+    trailingStop := false
+    lookForExit := false
+    lookForBE := false
+    barsInTrade := 0
+    lowestPrice := close
+    highestPrice := close
+    slTxt = getSLModified(tradeStopDistance)
+    tradeStartEquity := strategy.equity
+    if (useFixedFractional)
+        strategy.entry("Trade", strategy.long, qty=longQty, comment="LONG (SL=" + str.tostring(slTxt, "#.##") + " pips)")
+    else 
+        strategy.entry("Trade", strategy.long, comment="LONG (SL=" + str.tostring(slTxt) + " pips)")
+    // Trigger PC long alert
+    if usePC
+        pcAlertStop     = pc_pipTarget ? getSLModified(tradeStopDistance) : tradeStopPrice
+        pcAlertTarget   = USE_EXIT_REASON ? na : (pc_pipTarget ? getSLModified(tradeTargetDistance) : tradeTargetPrice)
+        pcAlertBE       = USE_BREAK_EVEN ? getSLModified(tradeBreakDistance) : na
+        alertString     = ""
+        if (pc_limit)
+            pcAlertPrice = pc_pipEntry ? pc_beOffset + pc_limitOffset : close - zen.toPips(pc_beOffset) - zen.toPips(pc_limitOffset)
+            pc.buylimit(pc_id, pcAlertPrice, pc_risk, pcAlertStop, pcAlertTarget, pcAlertBE, pc_beOffset, spread=pc_spreadFilter, accfilter=pc_accfilter, symbol=PC_SYMBOL, comment=pc_comment, secret=pc_secret, debug=pc_debug)
+        else
+            pc.buy(pc_id, pc_risk, pcAlertStop, pcAlertTarget, pcAlertBE, pc_beOffset, spread=pc_spreadFilter, accfilter=pc_accfilter, symbol=PC_SYMBOL, comment=pc_comment, secret=pc_secret, debug=pc_debug)
+    na  // Return NA for this if statement
+
+// Handle short setup entry
+float shortQty = zen.getPositionSize(riskPerTrade, shortStopDistance, useCurrentTF=useCurTf, balance=ignoreCompounding ? strategy.initial_capital : strategy.equity)
+if (validShortEntry and (drawRealTime or barstate.isconfirmed))
+    // Save entry, stops, targets, position size, break-even price etc
+    tradeStopPrice := shortStopPrice
+    tradeStopDistance := shortStopDistance
+    tradeTargetPrice := exitType6 ? bearishClosePB : close - tradeStopDistance * riskRewardMultiplier
+    tradeTargetDistance := close - tradeTargetPrice
+    tradeBreakDistance = tradeStopDistance * stopBreakEvenMultiplier
+    tradeBreakPrice := close - tradeBreakDistance
+    tradeEntryPrice := close
+    trailingStop := false
+    lookForExit := false
+    lookForBE := false
+    barsInTrade := 0
+    lowestPrice := close
+    highestPrice := close
+    tradeStartEquity := strategy.equity
+    // Enter trade 
+    slTxt = getSLModified(tradeStopDistance)
+    if (useFixedFractional)
+        strategy.entry("Trade", strategy.short, qty=shortQty, comment="SHORT (SL=" + str.tostring(slTxt, "#.##") + " pips)")
+    else 
+        strategy.entry("Trade", strategy.short, comment="SHORT (SL=" + str.tostring(slTxt) + " pips)")
+    // Trigger PC short alert
+    if (usePC)
+        pcAlertStop     = pc_pipTarget ? getSLModified(tradeStopDistance) : tradeStopPrice
+        pcAlertTarget   = USE_EXIT_REASON ? na : (pc_pipTarget ? getSLModified(tradeTargetDistance) : tradeTargetPrice)
+        pcAlertBE       = USE_BREAK_EVEN ? getSLModified(tradeBreakDistance) : na
+        if (pc_limit)
+            pcAlertPrice = pc_pipEntry ? pc_beOffset + pc_limitOffset : close + zen.toPips(pc_beOffset) + zen.toPips(pc_limitOffset)
+            pc.selllimit(pc_id, pcAlertPrice, pc_risk, pcAlertStop, pcAlertTarget, pcAlertBE, pc_beOffset, spread=pc_spreadFilter, accfilter=pc_accfilter, symbol=PC_SYMBOL, comment=pc_comment, secret=pc_secret, debug=pc_debug)
+        else
+            pc.sell(pc_id, pc_risk, pcAlertStop, pcAlertTarget, pcAlertBE, pc_beOffset, spread=pc_spreadFilter, comment=pc_comment, accfilter=pc_accfilter, symbol=PC_SYMBOL, secret=pc_secret, debug=pc_debug)
+
+// Keep track of how long we've been in a trade (for P&L label tooltips) and calculate max favorable and adverse excursions
+if (not zen.isFlat() and not(validLongEntry or validShortEntry))
+    tradeEntryPrice := strategy.position_avg_price
+    barsInTrade := barsInTrade + 1
+    if high > highestPrice
+        highestPrice := high
+    if low < lowestPrice
+        lowestPrice := low
+    if zen.isLong()
+        maxAdverseExcursion := tradeEntryPrice - lowestPrice
+        maxFavorableExcursion := highestPrice - tradeEntryPrice
+    if zen.isShort()
+        maxAdverseExcursion := highestPrice - tradeEntryPrice
+        maxFavorableExcursion := tradeEntryPrice - lowestPrice
+
+// Trigger search for long exit reasons
+if (zen.isLong() and high >= tradeTargetPrice and USE_EXIT_REASON)
+    lookForExit := true
+
+// Trigger search for short exit reasons
+if (zen.isShort() and low <= tradeTargetPrice and USE_EXIT_REASON)
+    lookForExit := true
+// } END TRADE ENTRIES ---
+
+// Check if long or short trade stop & target was hit at the same time on the same bar (and warn the user that they need to confirm the outcome on a lower timeframe)
+bool doubleOrder = false
+if (zen.isLong() and ((low <= tradeStopPrice and not trailingStop) and (not USE_EXIT_REASON and high >= tradeTargetPrice and not validLongEntry))) or
+   (zen.isShort() and ((high >= tradeStopPrice and not trailingStop) and (not USE_EXIT_REASON and low <= tradeTargetPrice and not validShortEntry)))
+    doubleOrder := true
+
+// Mark it
+bgcolor(displayWarnings and doubleOrder ? color.new(color.orange, 66) : na)
+label mcLabel = displayWarnings and doubleOrder ? label.new(bar_index, high, text="WARNING!", 
+     tooltip="This trade hit its take-profit AND stop-loss\non the same bar. The only way to find out if it\ntruly won or lost is to check on a lower timeframe!", 
+     style=label.style_label_down, color=color.orange, textcolor=color.black, size=size.small) : na
+
+// Check for long trade stops & targets
+if (zen.isLong() and ((low <= tradeStopPrice and not trailingStop) or (not USE_EXIT_REASON and high >= tradeTargetPrice and not validLongEntry)))
+    // If our take-profit has been hit, make sure to wipe limit orders from PC
+    if (usePC and pc_cancelOrders and pc_limit and high >= tradeTargetPrice)
+        pc.cancellong(pc_id, symbol=PC_SYMBOL, comment=pc_comment, secret=pc_secret, debug=pc_debug, freq=pc.once_per_bar())
+
+// Check for short trade stops & targets
+if (zen.isShort() and ((high >= tradeStopPrice and not trailingStop) or (not USE_EXIT_REASON and low <= tradeTargetPrice and not validShortEntry)))
+    // If our take-profit has been hit, make sure to wipe limit orders from PC
+    if (usePC and pc_cancelOrders and pc_limit and low <= tradeTargetPrice)
+        pc.cancelshort(pc_id, symbol=PC_SYMBOL, comment=pc_comment, secret=pc_secret, debug=pc_debug, freq=pc.once_per_bar())
+
+// Trigger stop to break-even for long trades
+if (zen.isLong() and high >= tradeBreakPrice and USE_BREAK_EVEN and tradeStopPrice < tradeEntryPrice)
+    lookForBE := true
+    tradeStopPrice := tradeEntryPrice
+    // Do not need PC break-even code as that is sent with entry order
+
+// Trigger stop to break-even for short trades
+if (zen.isShort() and low <= tradeBreakPrice and USE_BREAK_EVEN and tradeStopPrice > tradeEntryPrice)
+    lookForBE := true
+    tradeStopPrice := tradeEntryPrice
+    // Do not need PC break-even code as that is sent with entry order
+// } END CHECK FOR FIXED TARGET, TRAILING STOP LOSS OR BREAK-EVEN --- //
+
+// --- CHECK FOR EXIT REASONS { //
+bool trailAlertTrigger = false
+
+// Handle Long ATR Trailing Stop
+float recentLow = ta.lowest(low, lookback) // Extract from "if statement" scope for consistency (so it is executed on every tick)
+if (zen.isLong() and trailStop and lookForExit and barstate.isconfirmed)
+    trailSrcLong = trailSource == "Close" ? close[1] : trailSource == "Open" ? open[1] : recentLow
+    trail = trailSrcLong - atr * trailStopSize
+    if (trail > tradeStopPrice)
+        trailingStop := true
+        tradeStopPrice := trail
+        trailAlertTrigger := true
+        // Trigger trailing stop PC update
+        if (usePC)
+            pcStop = pc_pipTarget ? getSLModified(close - tradeStopPrice) : tradeStopPrice
+            pc.newsltplong(pc_id, pcStop, symbol=PC_SYMBOL, comment=pc_comment, secret=pc_secret, debug=pc_debug)
+
+// Handle Short ATR Trailing Stop
+float recentHigh = ta.highest(high, lookback) // Extract from "if statement" scope for consistency (so it is executed on every tick)
+if (zen.isShort() and trailStop and lookForExit and barstate.isconfirmed)
+    trailSrcShort = trailSource == "Close" ? close[1] : trailSource == "Open" ? open[1] : recentHigh
+    trail = trailSrcShort + atr * trailStopSize
+    if (trail < tradeStopPrice)
+        trailingStop := true
+        tradeStopPrice := trail
+        trailAlertTrigger := true
+        // Trigger trailing stop PC update
+        if (usePC)
+            pcStop = pc_pipTarget ? getSLModified(tradeStopPrice - close) : tradeStopPrice
+            pc.newsltpshort(pc_id, pcStop, symbol=PC_SYMBOL, comment=pc_comment, secret=pc_secret, debug=pc_debug)
+
+// Check for RSI Engulfing Candle Exit
+bool exitLongRSI = rsi[1] >= rsiOB and close[1] > open[1] and close <= open[1]
+bool exitShortRSI = rsi[1] <= rsiOS and close[1] < open[1] and close >= open[1]
+
+// Check for RSI Exhaustion Exit
+bool exitLongRSIX = rsi[1] >= rsiOB and close < open
+bool exitShortRSIX = rsi[1] <= rsiOS and close > open
+
+// Check for HHHC/LLLC Exit
+bool exitLLLC = close < low[1]
+bool exitHHHC = close > high[1]
+
+// Check for HHHC/LLLC x2 Exit
+bool exitLLLC2 = close[1] < low[2] and exitLLLC
+bool exitHHHC2 = close[1] > high[2] and exitHHHC
+
+// Check for MA Breach Exit
+bool exitLongMA = close < ma1
+bool exitShortMA = close > ma1
+
+// Check if any Long exit conditions have been met
+longExit = zen.isLong() and lookForExit and barstate.isconfirmed and
+  ((exitType1 and exitLongRSI) or
+  (exitType2 and exitLongRSIX) or
+  (exitType3 and exitLLLC) or
+  (exitType4 and exitLLLC2) or
+  (exitType5 and exitLongMA))
+
+// If we have a reason to exit, process the exit
+if (longExit)
+    strategy.close_all()
+    // Trigger PC exit market order
+    if usePC
+        pc.closelong(pc_id, symbol=PC_SYMBOL, comment=pc_comment, secret=pc_secret, debug=pc_debug)
+
+// Check if any Short exit conditions have been met
+shortExit = zen.isShort() and lookForExit and barstate.isconfirmed and
+  ((exitType1 and exitShortRSI) or
+  (exitType2 and exitShortRSIX) or
+  (exitType3 and exitHHHC) or
+  (exitType4 and exitHHHC2) or
+  (exitType5 and exitShortMA))
+
+// If we have a reason to exit, process the exit
+if (shortExit)
+    strategy.close_all()
+    // Trigger PC exit market order
+    if (usePC)
+        pc.closeshort(pc_id, symbol=PC_SYMBOL, comment=pc_comment, secret=pc_secret, debug=pc_debug)
+
+// Prepare monte carlo spread (if input MC spread is zero, we rng will not affect LOs at all)
+float monteCarloSpreadRNG = zen.toPips(zen.random(monteCarloSpread, monteCarloSpread * -1))
+if (monteCarloSpreadNegative) // Only randomize in a way that hurts position 
+    if (zen.isLong())
+        monteCarloSpreadRNG := math.abs(monteCarloSpreadRNG) * -1
+        monteCarloSpreadRNG := math.abs(monteCarloSpreadRNG) * -1
+    else if (zen.isShort())
+        monteCarloSpreadRNG := math.abs(monteCarloSpreadRNG)
+        monteCarloSpreadRNG := math.abs(monteCarloSpreadRNG)
+    else
+        monteCarloSpreadRNG := na
+
+// Exit fixed take-profit and stop-loss
+float tpPrice = (trailStop ? tradeStopPrice : tradeTargetPrice) + (monteCarloSpreadTP ? nz(monteCarloSpreadRNG) : 0)
+float slPrice = tradeStopPrice + (monteCarloSpreadSL ? nz(monteCarloSpreadRNG) : 0)
+float profitPips = getSLModified(tpPrice - tradeEntryPrice)
+float lossPips = getSLModified(slPrice - tradeEntryPrice)
+string strategyComment = "N/A"
+
+// Determine if this trade was a win or loss to generate strategy comment showing pips
+if (doubleOrder) // TP and SL was hit on the same bar, not certain of the outcome so flag it
+    strategyComment := "TP/SL hit on same bar!"
+else if (strategy.equity >= tradeStartEquity) // Profit                                                                                 
+    strategyComment := "+" + str.tostring(math.abs(profitPips), "#.##") + " pips"
+else // Loss
+    strategyComment := "-" + str.tostring(math.abs(lossPips), "#.##") + " pips"
+
+// Exit trades with take profit order/stop loss order if appropriate
+strategy.exit("Exit", "Trade", limit=USE_EXIT_REASON ? na : tpPrice, stop=slPrice, comment=strategyComment)
+
+// Exit time
+if (exitTimeTriggered and strategy.position_size != 0)
+    strategy.close_all("Exit time trigger")
+    if (usePC)
+        pc.closeall(pc_id, comment=pc_comment, secret=pc_secret, debug=pc_debug)
+bgcolor(exitTimeTriggered and strategy.position_size != 0 ? color.red : na)
+// } END EXIT REASONS --- //
+
+// --- DISPLAY PLOTS ETC { //
+// Draw MA(s)
+plot(ma1, title="MA 1", linewidth=2, color=priceAboveMA ? color.green : color.red)
+plot(maLength2 == 0 ? na : ma2, title="MA 2", linewidth=3, color=color.new(color.blue, 0))
+
+// Draw stops & targets
+bool drawOrders = validLongEntry or validShortEntry or not zen.isFlat() and (extendedTargets or trailStop)
+float targetPrice = lookForExit ? na : tradeTargetPrice
+plot(USE_BREAK_EVEN and not lookForExit and (drawOrders or drawOrders[1]) ? drawOrders ? tradeBreakPrice : tradeBreakPrice[1] : na, title="Trade B/E Price", color=color.new(color.blue, 0), style=plot.style_linebr)
+plot(drawOrders or drawOrders[1] ? drawOrders ? tradeStopPrice : tradeStopPrice[1] : na, title="Trade Stop Price", color=color.new(color.red, 0), style=plot.style_linebr)
+plot(drawOrders or drawOrders[1] ? drawOrders ? targetPrice : targetPrice[1] : na, title="Trade Target Price", color=color.new(color.green, 0), style=plot.style_linebr)
+
+// Prepare stats table
+var table perfTable = table.new(statsPosition == "TR" ? position.top_right : statsPosition == "BL" ? position.bottom_left : position.bottom_right, 7, 2, border_width=1)
+var table testTable = table.new(statsPosition == "TR" ? position.bottom_right : statsPosition == "BL" ? position.top_right : position.top_right, 3, 2, border_width=1)
+
+// Interest Rates
+float AUINTR = request.economic("AU", "INTR"), float CAINTR = request.economic("CA", "INTR")
+float EUINTR = request.economic("EU", "INTR"), float GBINTR = request.economic("GB", "INTR")
+float JPINTR = request.economic("JP", "INTR"), float NZINTR = request.economic("NZ", "INTR")
+float USINTR = request.economic("US", "INTR"), float ININTR = request.economic("IN", "INTR")
+
+// Draw stats table
+var bgcolor = color.new(color.black, 0)
+if (barstate.islastconfirmedhistory)
+    // Get relevant interest rate
+    float interestRate = switch (strategy.account_currency)
+        currency.AUD => AUINTR
+        currency.EUR => EUINTR
+        currency.JPY => JPINTR
+        currency.USD => USINTR
+        currency.CAD => CAINTR
+        currency.GBP => GBINTR
+        currency.NZD => NZINTR
+        currency.INR => ININTR
+        => 0
+
+    // Draw performance statistics
+    if (drawStats)
+        float rawWinRate = (strategy.wintrades / strategy.closedtrades) * 100
+        float winRate = switch (breakEvenTreatment)
+            "Count As Win"  => ((strategy.wintrades + zen.breakEvenCount()) / strategy.closedtrades) * 100
+            "Count As Loss" => rawWinRate
+            => (strategy.wintrades / (strategy.wintrades + strategy.losstrades)) * 100
+
+        float avgRR = zen.averageRR()
+        float dangerZone = 1 / (1 + avgRR) * 100
+        if (monteCarloSkipChance != 0)
+            zen.fillCell(perfTable, 0, 0, "MC %:", str.tostring(monteCarloSkipChance, "#.##") + "%", bgcolor, color.white)
+            zen.fillCell(perfTable, 0, 1, "Skipped:", str.tostring(monteCarloSkipped), bgcolor, color.white)
+        if (s_totalTrades)
+            zen.fillCell(perfTable, 1, 0, "Trades:", str.tostring(zen.tradeCount()), bgcolor, color.white)
+        if (s_avgRR)
+            zen.fillCell(perfTable, 1, 1, "Avg RR:", str.tostring(avgRR, "#.##"), bgcolor, color.white, tooltip="Average Win $ ÷ Average Loss $")
+        if (s_totalWL)
+            zen.fillCell(perfTable, 2, 0, "Wins:", str.tostring(strategy.wintrades), bgcolor, color.white)
+            zen.fillCell(perfTable, 2, 1, "Loss:", str.tostring(strategy.losstrades), bgcolor, color.white)
+            zen.fillCell(perfTable, 3, 0, "Long:", str.tostring(zen.longWinPercent(), "#.##") + "%", bgcolor, color.white)
+            zen.fillCell(perfTable, 3, 1, "Short:", str.tostring(zen.shortWinPercent(), "#.##") + "%", bgcolor, color.white)
+        if (s_totalBE)
+            zen.fillCell(perfTable, 4, 0, "B/E:", str.tostring(zen.breakEvenCount()), bgcolor, color.white)
+            zen.fillCell(perfTable, 4, 1, "B/E:", str.tostring(zen.breakEvenPercent(), "#.##") + "%", bgcolor, color.white)
+        zen.fillCell(perfTable, 5, 0, "Return:", (strategy.netprofit > 0 ? "+" : "") + str.tostring(strategy.netprofit_percent, "#.##") + "%", strategy.netprofit > 0 ? color.green : color.red, color.white)
+        zen.fillCell(perfTable, 5, 1, "Max DD:", str.tostring(zen.maxDrawdownRealized(), "#.##") + "%", color.red, color.white, tooltip="This is based on closed trades (ie. realized P&L).\nStrategy tester is based on open trades (unrealized).")
+        zen.fillCell(perfTable, 6, 0, "Win Rate:", str.tostring(winRate, "#.##") + "%", winRate <= dangerZone ? color.new(color.red, 0) : color.new(color.green, 0), color.white, tooltip="Raw Win Rate: " + str.tostring(rawWinRate, "#.##"))
+        zen.fillCell(perfTable, 6, 1, "Danger Zone:", str.tostring(dangerZone, "#.##") + "%", bgcolor, color.red, tooltip = str.tostring(winRate - dangerZone, "#.##") + "%")
+    // Draw backtester statistics
+    if (drawTester)
+        float totalPips = zen.totalPipReturn()
+        zen.fillCell(testTable, 0, 0, "Starting:", "$" + str.tostring(strategy.initial_capital), bgcolor, color.white)
+        zen.fillCell(testTable, 0, 1, "Ending:", "$" + str.tostring(strategy.initial_capital + strategy.netprofit, "#.##"), bgcolor, color.white)
+        zen.fillCell(testTable, 1, 0, "Return:", "$" + str.tostring(strategy.netprofit, "#.##"), bgcolor, strategy.netprofit > 0 ? color.green : color.red)
+        zen.fillCell(testTable, 1, 1, "Pips:", (totalPips > 0 ? "+" : "") + str.tostring(totalPips, "#.##"), bgcolor, color.white)
+        zen.fillCell(testTable, 2, 0, "Sharpe:", str.tostring(tv.sharpeRatio(interestRate), "#.###"), bgcolor, color.white, tooltip="Currency: " + strategy.account_currency + "\nInterest Rate: " + str.tostring(interestRate) + "%")
+        zen.fillCell(testTable, 2, 1, "Sortino:", str.tostring(tv.sortinoRatio(interestRate) , "#.###"), bgcolor, color.white, tooltip="Currency: " + strategy.account_currency + "\nInterest Rate: " + str.tostring(interestRate) + "%")
+
+// Change background of chart based on filters
+bgcolor(color=not timeFilter or not dateFilter or not dayFilter ? color.new(color.red, 50) : na, title="Filter Color")
+// } END DISPLAY --- //
+
+// { DEBUG CODE: IGNORE UNLESS SOMETHING IS WRONG AND THE SCRIPT REQUIRES DEBUGGING --- //
+// Draw pullback key levels
+plot(bullishClosePB, style=plot.style_linebr, display=display.none, color=color.new(color.red, 0), title="Bullish Pullback Close")
+plot(bullishHighPB, style=plot.style_linebr, display=display.none, color=color.new(color.green, 0), title="Bullish Pullback High")
+plot(bullishLowPB, style=plot.style_linebr, display=display.none, color=color.new(color.blue, 0), title="Bullish Pullback Low")
+plot(bearishClosePB, style=plot.style_linebr, display=display.none, color=color.new(color.red, 0), title="Bearish Pullback Close")
+plot(bearishHighPB, style=plot.style_linebr, display=display.none, color=color.new(color.green, 0), title="Bearish Pullback High")
+plot(bearishLowPB, style=plot.style_linebr, display=display.none, color=color.new(color.blue, 0), title="Bearish Pullback Low")
+plot(monteCarloSpreadRNG[1], "Monte Carlo Spread", display=display.data_window)
+// } END DEBUG --- //
+
+//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// MONTHLY TABLE based on the script written by QuantNomad - Copy & Paste code from here down into your strategy script /{
+// Original Script: https://tradingview.com/script/kzp8e4X3-Monthly-Returns-in-PineScript-Strategies/                   //
+// ZenAndTheArtOfTrading Script: https://www.tradingview.com/script/aHwncfep-Monthly-Strategy-Performance-Table/        //
+//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// Custom function for getting table text sized based on user input
+table_text_size(_size) =>
+    switch _size
+        "Auto"   => size.auto   
+        "Huge"   => size.huge   
+        "Large"  => size.large  
+        "Normal" => size.normal 
+        "Small"  => size.small
+        => size.tiny
+tableTextSize = table_text_size(mptable_tableTextSize)
+
+// Custom function for getting decimal precision based on given number 
+// (eg. if number is > 0 but < 0.05 or < 0 and > -0.05, set precision to 3 to avoid rounding to 0 which is misleading)
+getRoundingPrecision(float num) =>
+    if (num > 0 and num < 0.05) or (num < 0 and num > -0.05)
+        3
+    else
+        mptable_precision
+
+// Define a monthly/yearly return type
+type StrategyReturn
+    float profit
+    float drawdown
+    float peak
+    int timestamp
+
+// Store accumulated P&L values
+var float accumulatedMonthlyPL = 0
+var float accumulatedYearlyPL = 0
+var float bestAccumulatedMonthlyPL = 0
+var float bestAccumulatedYearlyPL = 0
+
+// Store drawdown values
+var float equityPeak = strategy.initial_capital
+var float yearlyEquityHigh = 0
+var float currentYearlyDrawdown = 0
+var float yearlyMaxDrawdown = 0
+var float worstDrawdown = 0
+var float monthlyEquityHigh = 0
+var float currentMonthlyDrawdown = 0
+var float monthlyMaxDrawdown = 0
+var int currentDrawdownBars = 0
+var int maxDrawdownBars = 0
+
+// Store stat arrays
+var array<int>      totalDrawdownBars   = array.new<int>(0)
+var array<float>    totalDrawdowns      = array.new<float>(0)
+
+// Store long & short trade count
+var int totalBreakEvenTrades = 0
+var int totalLongTrades = 0
+var int totalLongTradeWins = 0
+var int totalShortTrades = 0
+var int totalShortTradeWins = 0
+
+var float lastProfitLoss = na
+var float lastCumulativeProfitPercent = na
+var float lastTradeCost = na
+
+// Detect a closed trade
+// TV Documentation: Trade List's Cumulative Profit % Formula = TradeProfit / (InitialCapital + Cumulative Profit of the previous trades) * 100%
+if strategy.closedtrades != strategy.closedtrades[1]
+    
+    // Retrieve trade cost for the closed trade
+    lastTradeCost := strategy.closedtrades.commission(strategy.closedtrades - 1)
+
+    // Calculate equity before trade closed (strategy.equity will not do, because it changes bar-by-bar based on open P&L not realized P&L)
+    float preEquity = strategy.initial_capital + strategy.netprofit[1]
+
+    // Calculate P&L + cost of this trade
+    lastProfitLoss := strategy.closedtrades.profit(strategy.closedtrades - 1) //(strategy.grossloss - (strategy.grossloss[1] - tradeCost)) * -1
+    
+    // Check if this was a long or short trade and if it won or lost
+    if strategy.position_size[1] > 0
+        totalLongTrades := totalLongTrades + 1
+        if lastProfitLoss > 0
+            totalLongTradeWins := totalLongTradeWins + 1
+    else if strategy.position_size[1] < 0
+        totalShortTrades := totalShortTrades + 1
+        if lastProfitLoss > 0
+            totalShortTradeWins := totalShortTradeWins + 1
+        
+    // Check if the trade broke even
+    if lastProfitLoss == 0
+        totalBreakEvenTrades := totalBreakEvenTrades + 1
+
+    // Calculate cumulative profit % for this trade 
+    lastCumulativeProfitPercent := (lastProfitLoss / preEquity) * 100
+
+    // Store highest peak value of equity (we can now use strategy.equity since equity has updated to realized P&L on this bar)
+    if strategy.equity > equityPeak
+        equityPeak := strategy.equity
+
+    // Calculate total system drawdown %
+    float equityDD = ((strategy.equity - equityPeak) / equityPeak) * 100
+    if equityDD < worstDrawdown
+        worstDrawdown := equityDD
+
+    // Store accumulated monthly + yearly P&L
+    accumulatedMonthlyPL := lastCumulativeProfitPercent + accumulatedMonthlyPL[1]
+    accumulatedYearlyPL := accumulatedYearlyPL + lastCumulativeProfitPercent
+
+    // Save max favourable excursion for this month (ie. peak return as %)
+    if accumulatedMonthlyPL > bestAccumulatedMonthlyPL
+        bestAccumulatedMonthlyPL := accumulatedMonthlyPL
+
+    // Save max favourable excursion for this year (ie. peak return as %)
+    if accumulatedYearlyPL > bestAccumulatedYearlyPL
+        bestAccumulatedYearlyPL := accumulatedYearlyPL
+
+    // Track max equity high over current year for max yearly drawdown calculation
+    if accumulatedYearlyPL > yearlyEquityHigh
+        yearlyEquityHigh := accumulatedYearlyPL
+    
+    // Check if our yearly realized equity high minus current realized equity exceeds our stored max drawdown for the year, update if necessary, and save worst drawdown
+    if accumulatedYearlyPL - yearlyEquityHigh < 0
+        currentYearlyDrawdown := accumulatedYearlyPL - yearlyEquityHigh
+        if currentYearlyDrawdown < yearlyMaxDrawdown
+            yearlyMaxDrawdown := currentYearlyDrawdown
+    
+    // Track max equity high over current month for max monthly drawdown calculation
+    if accumulatedMonthlyPL > monthlyEquityHigh
+        monthlyEquityHigh := accumulatedMonthlyPL
+    
+    // Check if our monthly realized equity high minus current realized equity exceeds our stored max drawdown for the month, update if necessary, and save worst drawdown
+    if accumulatedMonthlyPL - monthlyEquityHigh < 0
+        currentMonthlyDrawdown := accumulatedMonthlyPL - monthlyEquityHigh
+        if currentMonthlyDrawdown < monthlyMaxDrawdown
+            monthlyMaxDrawdown := currentMonthlyDrawdown
+    
+    // Debug label
+    if mptable_debug
+        string debugTip = "Equity = $" + str.tostring(strategy.equity, "#.##") + 
+         "\nP&L=" + str.tostring(lastCumulativeProfitPercent) + "%" +
+         "\nAccumMonthlyP&L=" + str.tostring(math.round(accumulatedMonthlyPL, getRoundingPrecision(accumulatedMonthlyPL))) + "%" +
+         "\nAccumYearlyP&L=" + str.tostring(math.round(accumulatedYearlyPL, getRoundingPrecision(accumulatedYearlyPL))) + "%" +
+         "\nMonthlyMaxDD=" + str.tostring(math.round(monthlyMaxDrawdown, getRoundingPrecision(monthlyMaxDrawdown))) + "%" +
+         "\nYearlyMaxDD=" + str.tostring(math.round(yearlyMaxDrawdown, getRoundingPrecision(yearlyMaxDrawdown))) + "%" +
+         "\nTotalMaxDD=" + str.tostring(math.round(worstDrawdown, getRoundingPrecision(worstDrawdown))) + "%" +
+         "\nCurrentDDBars=" + str.tostring(currentDrawdownBars) +
+         "\nMaxDDBars=" + str.tostring(maxDrawdownBars) +
+         "\nTotalBreakEven=" + str.tostring(totalBreakEvenTrades) +
+         "\nTotalLongs=" + str.tostring(totalLongTrades) +
+         "\nTotalLongWins=" + str.tostring(totalLongTradeWins) +
+         "\nTotalShorts=" + str.tostring(totalShortTrades) +
+         "\nTotalShortWins=" + str.tostring(totalShortTradeWins)
+        label.new(bar_index, high + (high * 0.01), "P&L " + str.tostring(math.round(lastCumulativeProfitPercent, getRoundingPrecision(lastCumulativeProfitPercent))) + "%", tooltip=debugTip, textcolor=color.white)
+
+// Calculate drawdown since last equity high (NOT max drawdown, just the current max DD since we were out of DD)
+float t_equityDD = ((strategy.equity - equityPeak) / equityPeak) * 100
+var float currentMaxDrawdownSinceLast = 0
+
+// Update Max Drawdown bar count and current DD if equity is under water, check isconfirmed to prevent double-counting bars with recalc_on_order_fills on
+if strategy.equity < equityPeak and barstate.isconfirmed
+    currentDrawdownBars := currentDrawdownBars + 1
+    if currentDrawdownBars > maxDrawdownBars
+        maxDrawdownBars := currentDrawdownBars
+    if t_equityDD < currentMaxDrawdownSinceLast
+        currentMaxDrawdownSinceLast := t_equityDD
+else
+    if currentDrawdownBars > 0
+        totalDrawdownBars.push(currentDrawdownBars)
+        totalDrawdowns.push(currentMaxDrawdownSinceLast)
+    currentDrawdownBars := 0
+    currentMaxDrawdownSinceLast := 0
+
+// Prepare arrays to store Yearly and Monthly P&Ls
+var array<StrategyReturn> monthlyReturns = array.new<StrategyReturn>(0)
+var array<StrategyReturn> yearlyReturns = array.new<StrategyReturn>(0)
+
+var bool firstEntryTime = false
+// Retrieve entry time of initial entry in open position
+if not firstEntryTime and not na(strategy.opentrades.entry_time(0))
+    firstEntryTime := true
+
+// Detect new month and year
+bool new_month = month(time) != month(time[1])
+bool new_year = year(time) != year(time[1])
+
+// Debug plots
+plot(na, title="##### PERFORMANCE DEBUG #####", display=display.data_window)
+plot(lastTradeCost, title="Last Trade Cost $", display=display.data_window)
+plot(lastProfitLoss, title="Last Trade P&L $", display=display.data_window)
+plot(lastCumulativeProfitPercent, title="Last Trade P&L %", display=display.data_window)
+plot(accumulatedMonthlyPL, title="Accum. Monthly P&L", display=display.data_window)
+plot(accumulatedYearlyPL, title="Accum. Yearly P&L", display=display.data_window)
+
+// Detect a new month and store its return profile
+if not barstate.isfirst and new_month and firstEntryTime or barstate.islastconfirmedhistory
+    StrategyReturn mr = StrategyReturn.new(accumulatedMonthlyPL, monthlyMaxDrawdown, bestAccumulatedMonthlyPL, time[1])
+    monthlyReturns.push(mr)
+    accumulatedMonthlyPL := 0
+    monthlyMaxDrawdown := 0
+    monthlyEquityHigh := 0
+    currentMonthlyDrawdown := 0
+    bestAccumulatedMonthlyPL := 0
+
+    // Detect a new year and reset tracking variables
+if not barstate.isfirst and new_year and firstEntryTime or barstate.islastconfirmedhistory
+    StrategyReturn yr = StrategyReturn.new(accumulatedYearlyPL, yearlyMaxDrawdown, bestAccumulatedYearlyPL, time[1])
+    yearlyReturns.push(yr)
+    accumulatedYearlyPL := 0
+    yearlyMaxDrawdown := 0
+    yearlyEquityHigh := 0
+    currentYearlyDrawdown := 0
+    bestAccumulatedYearlyPL := 0
+
+// DEBUG code
+bgcolor(mptable_debug and new_month ? color.lime : na, title="New Month", display=display.none)
+bgcolor(mptable_debug and new_year ? color.red : na, title="New Year", display=display.none)
+// END DEBUG CODE
+
+// Define Monthly P&L Table    
+var table performance_table = table(na)
+
+//Adjust mptable_pageSize if the years are less than the mptable_pageSize
+if yearlyReturns.size() < mptable_pageSize
+    mptable_pageSize := yearlyReturns.size()
+
+// Caluclate the start and end of page to display
+int startIndex = math.max(math.min(yearlyReturns.size() - 1, yearlyReturns.size() - 1 - (mptable_pageSize + 1) * mptable_pageNumber), mptable_pageSize - 1)
+int endIndex = math.max(startIndex - mptable_pageSize, 0)
+mptable_pageSize := endIndex <= mptable_pageSize ? endIndex : mptable_pageSize
+
+// If this is the last bar on our chart, display the performance table
+var int EXTRA_STAT_ROWS = 5 // This ensures table includes enough rows for CAGR etc
+if mptable_on and monthlyReturns.size() > 0 and barstate.islastconfirmedhistory
+
+    // Create table (100 rows = 100 years of data, should be plenty for all markets!)
+    performance_table := table.new(position.bottom_right, columns=17, rows=yearlyReturns.size() + EXTRA_STAT_ROWS, border_width=1)
+
+    // Set column headers
+    performance_table.cell(0, 0, "Year", bgcolor=mptable_titleColor, text_color=mptable_titleTextColor, text_size=tableTextSize)
+    performance_table.cell(1, 0, "Jan", bgcolor=mptable_titleColor, text_color=mptable_titleTextColor, text_size=tableTextSize)
+    performance_table.cell(2, 0, "Feb", bgcolor=mptable_titleColor, text_color=mptable_titleTextColor, text_size=tableTextSize)
+    performance_table.cell(3, 0, "Mar", bgcolor=mptable_titleColor, text_color=mptable_titleTextColor, text_size=tableTextSize)
+    performance_table.cell(4, 0, "Apr", bgcolor=mptable_titleColor, text_color=mptable_titleTextColor, text_size=tableTextSize)
+    performance_table.cell(5, 0, "May", bgcolor=mptable_titleColor, text_color=mptable_titleTextColor, text_size=tableTextSize)
+    performance_table.cell(6, 0, "Jun", bgcolor=mptable_titleColor, text_color=mptable_titleTextColor, text_size=tableTextSize)
+    performance_table.cell(7, 0, "Jul", bgcolor=mptable_titleColor, text_color=mptable_titleTextColor, text_size=tableTextSize)
+    performance_table.cell(8, 0, "Aug", bgcolor=mptable_titleColor, text_color=mptable_titleTextColor, text_size=tableTextSize)
+    performance_table.cell(9, 0, "Sep", bgcolor=mptable_titleColor, text_color=mptable_titleTextColor, text_size=tableTextSize)
+    performance_table.cell(10, 0, "Oct", bgcolor=mptable_titleColor, text_color=mptable_titleTextColor, text_size=tableTextSize)
+    performance_table.cell(11, 0, "Nov", bgcolor=mptable_titleColor, text_color=mptable_titleTextColor, text_size=tableTextSize)
+    performance_table.cell(12, 0, "Dec", bgcolor=mptable_titleColor, text_color=mptable_titleTextColor, text_size=tableTextSize)
+    performance_table.cell(13, 0, "TOTAL", bgcolor=mptable_titleColor, text_color=mptable_titleTextColor, text_size=tableTextSize)
+    performance_table.cell(14, 0, "MaxDD", bgcolor=mptable_titleColor, text_color=mptable_titleTextColor, text_size=tableTextSize)
+
+    // Set yearly values
+    for year_index = startIndex to yearlyReturns.size() == 0 ? na : endIndex
+        
+        // Get yearly return for this loop, set year number in first column, determine color of cell
+        StrategyReturn yearlyReturn = yearlyReturns.get(year_index)
+
+        // Set year title and determine color
+        performance_table.cell(0, year_index + 1, str.tostring(year(yearlyReturn.timestamp)), bgcolor=mptable_titleColor, text_color=mptable_titleTextColor, text_size=tableTextSize)
+        color y_color = yearlyReturn.profit > 0 ? mptable_ProfitColor : yearlyReturn.profit == 0 ? mptable_BreakEvenColor : mptable_LossColor
+
+        // Populate yearly cell values
+        string yearlyTip = "MaxDD: " + str.tostring(math.round(yearlyReturn.drawdown, getRoundingPrecision(yearlyReturn.drawdown))) + "%" +
+             "\nMFE: " + str.tostring(math.round(yearlyReturn.peak, getRoundingPrecision(yearlyReturn.peak))) + "%"
+        performance_table.cell(13, year_index + 1, (yearlyReturn.profit > 0 ? "+" : "") + str.tostring(math.round(yearlyReturn.profit, getRoundingPrecision(yearlyReturn.profit))) + "%", bgcolor=y_color, text_color=color.white, text_size=tableTextSize, tooltip=yearlyTip)
+        performance_table.cell(14, year_index + 1, str.tostring(math.round(yearlyReturn.drawdown, getRoundingPrecision(yearlyReturn.drawdown))) + "%", bgcolor=mptable_BreakEvenColor, text_color=color.white, text_size=tableTextSize)
+
+        // Set monthly values
+        for month_index = 0 to monthlyReturns.size() - 1
+
+            // Get monthly return for this loop, get current year for this loop, then calculate the corresponding table column and row
+            StrategyReturn monthlyReturn = monthlyReturns.get(month_index)
+            int yearOfMonth = year(monthlyReturn.timestamp)
+            int monthCol = month(monthlyReturn.timestamp)
+            
+            // populate monthly profit only if the years of the yearly return match with the monthly return. 
+            if yearOfMonth == year(yearlyReturn.timestamp)
+                 // Determine color for monthly P&L
+                color m_color = monthlyReturn.profit > 0 ? color.new(mptable_ProfitColor, color.t(mptable_ProfitColor) + 20) : monthlyReturn.profit == 0 ? color.new(mptable_BreakEvenColor, color.t(mptable_BreakEvenColor) + 20) : color.new(mptable_LossColor, color.t(mptable_LossColor) + 20)
+                
+                // Set monthly P&L cell
+                string monthlyTip = "MaxDD: " + str.tostring(math.round(monthlyReturn.drawdown, getRoundingPrecision(monthlyReturn.drawdown))) + "%" +
+                     "\nMFE: " + str.tostring(math.round(monthlyReturn.peak, getRoundingPrecision(monthlyReturn.peak))) + "%"
+                performance_table.cell(monthCol, year_index + 1, str.tostring(math.round(monthlyReturn.profit, getRoundingPrecision(monthlyReturn.profit))), bgcolor=m_color, text_color=color.white, text_size=tableTextSize, tooltip=monthlyTip)
+
+    // Calculate the time difference in milliseconds
+    float start_time = strategy.closedtrades.entry_time(0)
+    float end_time = strategy.closedtrades.exit_time(strategy.closedtrades - 1)
+    float time_diff = end_time - start_time
+
+    // Convert time difference from milliseconds to years
+    float years_traded = time_diff / 31536000000.0
+
+    // Calculate CAGR
+    float final_value = strategy.netprofit + strategy.initial_capital
+    float cagr = (math.pow(final_value / strategy.initial_capital, 1 / years_traded) - 1) * 100
+
+    float percentReturn = (strategy.netprofit / strategy.initial_capital) * 100
+    float mar = cagr / math.abs(worstDrawdown)
+    lastMonthRowIndex = startIndex < 5 ? 5 : startIndex
+
+    // Populate table data
+    float totalWinRate = (strategy.wintrades / strategy.closedtrades) * 100
+    float longWinRate = nz((totalLongTradeWins / totalLongTrades) * 100)
+    float shortWinRate = nz((totalShortTradeWins / totalShortTrades) * 100)
+    int avgTradesYr = math.ceil(strategy.closedtrades / years_traded)
+    float totalCommissionCost = 0
+    for i = 0 to strategy.closedtrades
+        totalCommissionCost := totalCommissionCost + strategy.closedtrades.commission(i)
+
+    float commissionDrag = ((totalCommissionCost / strategy.initial_capital) * 100) / years_traded
+    string returnTip = "Based on a total of " + str.tostring(strategy.closedtrades) + " trades" +
+         "\nWin Rate = " + str.tostring(math.round(totalWinRate, getRoundingPrecision(totalWinRate))) + "%" +
+         "\nLong Trades = " + str.tostring(totalLongTrades) + " (Win " + str.tostring(math.round(longWinRate, getRoundingPrecision(longWinRate))) + "%)" +
+         "\nShort Trades = " + str.tostring(totalShortTrades) + " (Win " + str.tostring(math.round(shortWinRate, getRoundingPrecision(shortWinRate))) + "%)" +
+         "\nAvg Trades Per Year = " + str.tostring(avgTradesYr) + " (" + str.tostring(years_traded, "#.#") + " years)" +
+         "\nCommission Drag = " + str.tostring(commissionDrag, "#.##") + "% per year"
+    performance_table.cell(15, lastMonthRowIndex, "Return: " + (percentReturn > 0 ? "+" : "") + str.tostring(math.round(percentReturn, getRoundingPrecision(percentReturn))) + "%", bgcolor=mptable_titleColor, text_color=mptable_titleTextColor, text_font_family=font.family_monospace, text_size=tableTextSize, tooltip=returnTip)
+    performance_table.cell(15, lastMonthRowIndex - 1, "MAR: " + str.tostring(mar, "#.##"), bgcolor=mptable_titleColor, text_color=mptable_titleTextColor, text_font_family=font.family_monospace, text_size=tableTextSize, tooltip="Measure of return adjusted for risk: CAGR divided by Max Drawdown. Indicates how comfortable the system might be to trade. Higher than 0.5 is ideal, 1.0 and above is very good, and anything 3.0 or above should be considered suspicious.")
+    performance_table.cell(15, lastMonthRowIndex - 2, "DD Bars: " + str.tostring(maxDrawdownBars), bgcolor=mptable_titleColor, text_color=mptable_titleTextColor, text_font_family=font.family_monospace, text_size=tableTextSize, tooltip="Average Drawdown Bars: " + str.tostring(totalDrawdownBars.avg(), "#.#") + "\n\nThis is how many bars it took to recover the longest drawdown (note: this is different to the MAX drawdown, and represents time drawdown)")
+    performance_table.cell(15, lastMonthRowIndex - 3, "MaxDD: " + str.tostring(math.round(worstDrawdown, getRoundingPrecision(worstDrawdown))) + "%", bgcolor=mptable_titleColor, text_color=mptable_titleTextColor, text_font_family=font.family_monospace, text_size=tableTextSize, tooltip="Average Drawdown: " + str.tostring(totalDrawdowns.avg(), "#.##") + "%\n\nThis number is different to the Strategy Tester because this number is based on closed trade equity while the Tester's MaxDD is based on open equity.")
+    performance_table.cell(15, lastMonthRowIndex - 4, "CAGR: " + (cagr > 0 ? "+" : "") + str.tostring(math.round(cagr, getRoundingPrecision(cagr))) + "%", bgcolor=mptable_titleColor, text_color=mptable_titleTextColor, text_font_family=font.family_monospace, text_size=tableTextSize, tooltip="Compounded annual growth rate")
+    performance_table.cell(15, lastMonthRowIndex - 5, "REALIZED P&L", bgcolor=mptable_titleColor, text_color=mptable_titleTextColor, text_font_family=font.family_monospace, text_size=tableTextSize, tooltip="These numbers are based on Realized equity (closed trades)")
+// } END MONTHLY TABLE
+/////////// END OF PERFORMANCE TABLE CODE. ///////////
