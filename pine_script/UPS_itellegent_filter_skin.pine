@@ -1,0 +1,246 @@
+// This source code is subject to the terms of the Mozilla Public License 2.0 at https://mozilla.org/MPL/2.0
+// Skinned UPS translation target (minimal core logic)
+// @version=6
+strategy(
+    title="UPS Skin Minimal",
+    shorttitle="UPS Skin",
+    overlay=true,
+    margin_long=0,
+    margin_short=0,
+    initial_capital=10000,
+    risk_free_rate=4.83,
+    max_bars_back=5000,
+    max_labels_count=500
+)
+
+import ZenAndTheArtOfTrading/ZenLibrary/12 as zen
+
+// --- INPUTS --- //
+var const string g_ma = "Moving Average Settings"
+string maType1 = input.string("EMA", "MA Type #1", options=["EMA", "SMA", "HMA", "WMA", "DEMA", "VWMA", "VWAP"], group=g_ma)
+string maType2 = input.string("EMA", "MA Type #2", options=["EMA", "SMA", "HMA", "WMA", "DEMA", "VWMA", "VWAP"], group=g_ma)
+int maLength1 = input.int(50, "MA Length #1", minval=1, group=g_ma)
+int maLength2 = input.int(0, "MA Length #2 (0=off)", minval=0, group=g_ma)
+int maxCandlesBeyondMA = input.int(1, "Max Candles Beyond MA", minval=0, group=g_ma)
+int maConsolidationLookback = input.int(10, "Consolidation Lookback", minval=0, group=g_ma)
+int maConsolidationCount = input.int(4, "Max Consolidation Count", minval=0, group=g_ma)
+
+var const string g_iq = "Intelligent Trend Filter"
+bool useIQFilter = input.bool(false, "Use Intelligent Trend Filter", group=g_iq)
+int iqLookback = input.int(20, "Score Lookback", minval=5, group=g_iq)
+float iqMinScore = input.float(0.55, "Minimum Trend Score", minval=0.0, maxval=1.0, step=0.01, group=g_iq)
+float iqSlopeATRScale = input.float(1.5, "Slope Scale (ATR)", minval=0.1, step=0.1, group=g_iq)
+float iqERWeight = input.float(0.5, "Weight: Efficiency", minval=0.0, maxval=1.0, step=0.05, group=g_iq, inline="iqw")
+float iqSlopeWeight = input.float(0.3, "Slope", minval=0.0, maxval=1.0, step=0.05, group=g_iq, inline="iqw")
+float iqBiasWeight = input.float(0.2, "MA Bias", minval=0.0, maxval=1.0, step=0.05, group=g_iq, inline="iqw")
+bool useSQBoost = input.bool(false, "Use Signal Quality Boost", group=g_iq)
+float sqBoostWeight = input.float(0.3, "Signal Boost Weight", minval=0.0, maxval=1.0, step=0.05, group=g_iq)
+int sqVolLookback = input.int(20, "Volume MA Lookback", minval=5, group=g_iq)
+
+var const string g_patterns = "Candle Patterns"
+bool longTrades = input.bool(true, "Detect Long Trades", group=g_patterns)
+bool showEC = input.bool(true, "Detect Engulfing Candles", group=g_patterns)
+bool ecWick = input.bool(false, "Engulfing Candle Must Engulf Wick", group=g_patterns)
+bool showHS = input.bool(false, "Detect Hammers", group=g_patterns)
+bool colorMatch = input.bool(false, "Hammers Must Match Color", group=g_patterns)
+
+var const string g_csettings = "Candle Settings"
+float atrMaxSize = input.float(2.5, "Max Candle Size To Detect (x ATR)", minval=0.0, step=0.1, group=g_csettings)
+float rejectionWickMaxSize = input.float(0.0, "Max Rejection Wick Size EC (x Body)", minval=0.0, step=0.1, group=g_csettings)
+float hammerFib = input.float(0.3, "Hammer Close %", minval=0.1, step=0.01, group=g_csettings)
+float hammerSize = input.float(0.1, "Hammer Minimum Size (x ATR)", minval=0.1, step=0.01, group=g_csettings)
+
+var const string g_pl = "Stops & Targets"
+float stopPips = input.float(0.0, "Stop Loss Fixed Pips", step=1.0, group=g_pl)
+float stopMultiplier = input.float(1.0, "Stop Loss ATR Multiplier", minval=0.1, step=0.1, group=g_pl)
+float riskRewardMultiplier = input.float(1.0, "Risk:Reward", minval=0.1, step=0.1, group=g_pl)
+float minimumRR = input.float(0.0, "Minimum R:R To PB Origin", minval=0.0, step=1.0, group=g_pl)
+string pbReference = input.string("Close", "PB Origin Reference", options=["Close", "Wick"], group=g_pl)
+string slReference = input.string("High/Low", "SL Price Reference", options=["High/Low", "Open", "Close"], group=g_pl)
+float minimumSL = input.float(0.0, "Minimum Stop Loss Pips", minval=0.0, group=g_pl)
+string minimumSLAction = input.string("Ignore Trade", "Minimum SL Action", options=["Ignore Trade", "Override"], group=g_pl)
+float maximumSL = input.float(0.0, "Maximum Stop Loss Pips", minval=0.0, group=g_pl)
+string maximumSLAction = input.string("Ignore Trade", "Maximum SL Action", options=["Ignore Trade", "Override"], group=g_pl)
+
+var const string g_exits = "Exit Settings"
+bool trailStop = input.bool(false, "Use ATR Trailing Stop", group=g_exits)
+float trailStopSize = input.float(1.0, "ATR Trailing Stop Multiplier", minval=0.1, step=0.1, group=g_exits)
+string trailSource = input.string("High/Low", "ATR Trailing Stop Source", options=["High/Low", "Close", "Open"], group=g_exits)
+
+var const string g_lookback = "Lookback Settings"
+int lookback = input.int(5, "Lookback For Swing High/Low", minval=0, group=g_lookback)
+int maBreachLookback = input.int(5, "Lookback For MA Breach", minval=0, group=g_lookback)
+
+var const string g_misc = "Core Misc"
+int atrLength = input.int(14, "ATR Length", minval=1, group=g_misc)
+int pointAllowance = input.int(0, "Point Allowance", minval=0, group=g_misc)
+
+var const string g_tester = "Backtester Settings"
+bool drawRealTime = input.bool(false, "Draw Signals on Real-Time Bars", group=g_tester)
+bool useFixedFractional = input.bool(true, "Use Fixed Fractional", group=g_tester)
+bool ignoreCompounding = input.bool(false, "Ignore Compounding", group=g_tester)
+bool useCurTf = input.bool(false, "Use Intrabar For Position Sizing", group=g_tester)
+float riskPerTrade = input.float(1.0, "Risk Per Trade", group=g_tester)
+
+// --- INDICATORS --- //
+float ma1 = zen.getMA(maLength1, maType1)
+float ma2 = zen.getMA(maLength2 <= 0 ? 1 : maLength2, maType2)
+float atr = ta.atr(atrLength)
+
+bool priceAboveMA = not na(ma1) and close > ma1
+int candlesBelowMA = zen.barsBelowMA(maBreachLookback, ma1)
+int maCrossCount = zen.barsCrossedMA(maConsolidationLookback, ma1)
+bool maCrossFilter = maCrossCount < maConsolidationCount
+
+float netMove = math.abs(close - close[iqLookback])
+float totalMove = math.sum(math.abs(close - close[1]), iqLookback)
+float efficiencyRatio = totalMove != 0 ? netMove / totalMove : 0.0
+float slopeRaw = atr != 0 ? math.abs(ma1 - ma1[iqLookback]) / atr : 0.0
+float slopeScore = math.min(slopeRaw / iqSlopeATRScale, 1.0)
+float biasLongScore = zen.barsAboveMA(iqLookback, ma1) / iqLookback
+
+float weightSum = iqERWeight + iqSlopeWeight + iqBiasWeight
+float longTrendScore = weightSum > 0 ? ((efficiencyRatio * iqERWeight) + (slopeScore * iqSlopeWeight) + (biasLongScore * iqBiasWeight)) / weightSum : 0.0
+
+float sqCandleStrength = (high - low) != 0 ? math.abs(close - open) / (high - low) : 0.0
+float sqVolAvg = ta.sma(nz(volume), sqVolLookback)
+float sqVolScore = sqVolAvg > 0 ? math.min(nz(volume) / sqVolAvg, 2.0) / 2.0 : 0.5
+float sqMAProximity = not na(ma1) and atr > 0 ? 1.0 - math.min(math.abs(close - ma1) / (atr * 2), 1.0) : 0.0
+float signalQuality = (sqCandleStrength + sqVolScore + sqMAProximity) / 3.0
+float sqBoost = useSQBoost ? sqBoostWeight * signalQuality : 0.0
+
+bool iqLongFilter = not useIQFilter or (longTrendScore + sqBoost) >= iqMinScore
+bool atrMaxSizeCheck = zen.atrFilter(atr, atrMaxSize)
+
+bool bullishPB = zen.getPullbackBarCount(lookback, 1) >= 2
+bool bearishPB = zen.getPullbackBarCount(lookback, -1) >= 2
+bool generalConditionsMet = atrMaxSizeCheck and maCrossFilter and not na(atr) and not na(ma1)
+bool longConditionsMet = generalConditionsMet and iqLongFilter and candlesBelowMA <= maxCandlesBeyondMA and (maLength2 == 0 or ma1 > ma2) and longTrades
+
+// --- PULLBACK STATE --- //
+var float bullishClosePB = na
+var float bullishHighPB = na
+var float bullishLowPB = na
+
+if (not na(ma1) and close > ma1)
+    if (high > bullishHighPB or na(bullishHighPB))
+        bullishHighPB := high
+    if (close > bullishClosePB or na(bullishClosePB))
+        bullishClosePB := close
+    if (close > ma1 and (low < bullishLowPB or na(bullishLowPB)) and (bearishPB or (low < low[1] and close < open)))
+        bullishLowPB := low
+    if (close > bullishHighPB[1])
+        bullishLowPB := na
+
+if (not na(ma1) and close < ma1 and close[1] < ma1 and close[2] > ma1)
+    bullishClosePB := na
+    bullishHighPB := na
+    bullishLowPB := na
+
+if (not na(ma1) and close > ma1 and close[1] > ma1 and close[2] < ma1)
+    bullishClosePB := close
+    bullishLowPB := na
+    bullishHighPB := na
+
+// Keep bearish pullback tracking in sync with original script state transitions.
+var float bearishClosePB = na
+var float bearishHighPB = na
+var float bearishLowPB = na
+
+if (not na(ma1) and close < ma1)
+    if (low < bearishLowPB or na(bearishLowPB))
+        bearishLowPB := low
+    if (close < bearishClosePB)
+        bearishClosePB := close
+    if (close < ma1 and (high > bearishHighPB or na(bearishHighPB)) and (bullishPB or (high > high[1] and close > open)))
+        bearishHighPB := high
+    if (close < bearishLowPB[1])
+        bearishHighPB := na
+
+if (not na(ma1) and close > ma1 and close[1] > ma1 and close[2] < ma1)
+    bearishClosePB := na
+    bearishHighPB := na
+    bearishLowPB := na
+
+if (not na(ma1) and close < ma1 and close[1] < ma1 and close[2] > ma1)
+    bearishClosePB := close
+    bearishHighPB := na
+    bearishLowPB := na
+
+int pbLookbackBullish = ta.barssince(low == bearishLowPB)
+int pbLookbackBearish = ta.barssince(high == bullishHighPB)
+bullishPB := zen.getPullbackBarCount(pbLookbackBullish, 1) >= 2
+bearishPB := zen.getPullbackBarCount(pbLookbackBearish, -1) >= 2
+
+// --- ENTRY PATTERNS --- //
+float allowance = syminfo.mintick * pointAllowance
+bool bullishEngulfing = zen.isBullishEC(allowance, rejectionWickMaxSize, ecWick) and close < bullishClosePB and (low == bullishLowPB or low[1] == bullishLowPB)
+float threeBarLow = ta.lowest(low, 3)
+bool hammerCandle = zen.isHammer(hammerFib, colorMatch) and high - low >= hammerSize * atr and low == bullishLowPB and low == threeBarLow
+bool entryPattern = (showEC and bullishEngulfing) or (showHS and hammerCandle)
+
+bool validLongEntry = zen.isFlat() and priceAboveMA and longConditionsMet and bearishPB and entryPattern
+
+// --- TRADE STATE --- //
+var float tradeStopPrice = na
+var float tradeTargetPrice = na
+var float trailStopPrice = na
+var bool lookForExit = false
+
+float longPriceSource = slReference == "High/Low" ? (low < low[1] ? low : low[1]) : slReference == "Open" ? open : close
+float stopSize = stopPips != 0.0 ? zen.toPips(stopPips) : atr * stopMultiplier
+float longStopPrice = longPriceSource - stopSize
+
+if (close - (longPriceSource - stopSize) < zen.toPips(minimumSL))
+    if (minimumSLAction == "Ignore Trade")
+        validLongEntry := false
+    else
+        longStopPrice := close - zen.toPips(minimumSL)
+
+if (maximumSL > 0 and close - (longPriceSource - stopSize) > zen.toPips(maximumSL))
+    if (maximumSLAction == "Ignore Trade")
+        validLongEntry := false
+    else
+        longStopPrice := close - zen.toPips(maximumSL)
+
+float longStopDistance = close - longStopPrice
+
+if (minimumRR > 0.0 and validLongEntry)
+    float distanceToPB = (pbReference == "Close" ? bullishClosePB : bullishHighPB) - close
+    validLongEntry := distanceToPB / longStopDistance >= minimumRR
+
+float longQty = zen.getPositionSize(riskPerTrade, longStopDistance, useCurrentTF=useCurTf, balance=ignoreCompounding ? strategy.initial_capital : strategy.equity)
+
+if (validLongEntry and (drawRealTime or barstate.isconfirmed))
+    tradeStopPrice := longStopPrice
+    tradeTargetPrice := close + longStopDistance * riskRewardMultiplier
+    trailStopPrice := na
+    lookForExit := false
+    if (useFixedFractional)
+        strategy.entry("Trade", strategy.long, qty=longQty)
+    else
+        strategy.entry("Trade", strategy.long)
+
+if (strategy.position_size > 0 and not validLongEntry)
+    lookForExit := true
+
+if (strategy.position_size > 0)
+    float recentLow = ta.lowest(low, lookback)
+    float trailSrcLong = trailSource == "Close" ? close[1] : trailSource == "Open" ? open[1] : recentLow
+    float trailCandidate = trailSrcLong - atr * trailStopSize
+
+    if (trailStop and lookForExit and barstate.isconfirmed)
+        trailStopPrice := na(trailStopPrice) ? trailCandidate : math.max(trailStopPrice, trailCandidate)
+
+    float activeStop = trailStop and not na(trailStopPrice) ? math.max(tradeStopPrice, trailStopPrice) : tradeStopPrice
+    if (lookForExit and barstate.isconfirmed)
+        strategy.exit("Exit", "Trade", stop=activeStop, limit=tradeTargetPrice)
+else
+    trailStopPrice := na
+    lookForExit := false
+
+plot(ma1, "MA 1", color=priceAboveMA ? color.green : color.red, linewidth=2)
+plot(maLength2 == 0 ? na : ma2, "MA 2", color=color.new(color.blue, 0), linewidth=2)
+plot(strategy.position_size > 0 ? tradeStopPrice : na, "Base Stop", color=color.new(color.red, 0), style=plot.style_linebr)
+plot(strategy.position_size > 0 ? tradeTargetPrice : na, "Target", color=color.new(color.green, 0), style=plot.style_linebr)
+plot(strategy.position_size > 0 and trailStop ? trailStopPrice : na, "Trail Stop", color=color.new(color.orange, 0), style=plot.style_linebr)
