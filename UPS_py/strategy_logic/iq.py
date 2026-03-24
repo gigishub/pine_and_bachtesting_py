@@ -2,7 +2,10 @@ from __future__ import annotations
 
 import pandas as pd
 
-from indicators import zen_bars_above_ma, zen_bars_below_ma
+try:
+    from ..indicators import zen_bars_above_ma, zen_bars_below_ma
+except ImportError:  # Backward-compatible when imported as top-level `strategy_logic`
+    from indicators import zen_bars_above_ma, zen_bars_below_ma
 
 
 def compute_iq_filter_series(

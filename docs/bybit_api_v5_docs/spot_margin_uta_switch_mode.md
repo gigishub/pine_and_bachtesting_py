@@ -1,0 +1,117 @@
+# Toggle Margin Trade
+
+> **Source:** https://bybit-exchange.github.io/docs/v5/spot-margin-uta/switch-mode
+
+---
+
+  * [](https://bybit-exchange.github.io/docs/)
+  * Spot Margin Trade (UTA)
+  * Toggle Margin Trade
+
+
+
+On this page
+
+# Toggle Margin Trade
+
+Turn on / off spot margin trade
+
+caution
+
+Your account needs to activate spot margin first; i.e., you must have finished the quiz on web / app.
+
+### HTTP Request​
+
+POST`/v5/spot-margin-trade/switch-mode`Copy
+
+### Request Parameters​
+
+Parameter| Required| Type| Comments  
+---|---|---|---  
+spotMarginMode| **true**|  string| `1`: on, `0`: off  
+  
+### Response Parameters​
+
+Parameter| Type| Comments  
+---|---|---  
+spotMarginMode| string| Spot margin status. `1`: on, `0`: off  
+[RUN >>](https://bybit-exchange.github.io/docs/api-explorer/v5/spot-margin-uta/switch-mode)
+
+* * *
+
+### Request Example​
+
+  * HTTP
+  * Python
+  * Node.js
+
+
+    
+    
+    POST /v5/spot-margin-trade/switch-mode HTTP/1.1  
+    Host: api-testnet.bybit.com  
+    X-BAPI-SIGN: XXXXX  
+    X-BAPI-API-KEY: xxxxxxxxxxxxxxxxxx  
+    X-BAPI-TIMESTAMP: 1672297794480  
+    X-BAPI-RECV-WINDOW: 5000  
+    Content-Type: application/json  
+      
+    {  
+        "spotMarginMode": "0"  
+    }  
+    
+    
+    
+    from pybit.unified_trading import HTTP  
+    session = HTTP(  
+        testnet=True,  
+        api_key="xxxxxxxxxxxxxxxxxx",  
+        api_secret="xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",  
+    )  
+    print(session.spot_margin_trade_toggle_margin_trade(  
+        spotMarginMode="0",  
+    ))  
+    
+    
+    
+    const { RestClientV5 } = require('bybit-api');  
+      
+    const client = new RestClientV5({  
+      testnet: true,  
+      key: 'xxxxxxxxxxxxxxxxxx',  
+      secret: 'xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx',  
+    });  
+      
+    client  
+      .toggleSpotMarginTrade('0')  
+      .then((response) => {  
+        console.log(response);  
+      })  
+      .catch((error) => {  
+        console.error(error);  
+      });  
+    
+
+### Response Example​
+    
+    
+    {  
+        "retCode": 0,  
+        "retMsg": "OK",  
+        "result": {  
+            "spotMarginMode": "0"  
+        },  
+        "retExtInfo": {},  
+        "time": 1672297795542  
+    }  
+    
+
+[PreviousGet Historical Interest Rate](https://bybit-exchange.github.io/docs/v5/spot-margin-uta/historical-interest)[NextSet Leverage](https://bybit-exchange.github.io/docs/v5/spot-margin-uta/set-leverage)
+
+  * HTTP Request
+  * Request Parameters
+  * Response Parameters
+  * Request Example
+  * Response Example
+
+

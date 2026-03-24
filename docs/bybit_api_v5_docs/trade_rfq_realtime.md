@@ -1,0 +1,118 @@
+# Get RFQs (real-time)
+
+> **Source:** https://bybit-exchange.github.io/docs/v5/rfq/trade/rfq-realtime
+
+---
+
+  * [](https://bybit-exchange.github.io/docs/)
+  * RFQ Trading
+  * Trade
+  * Get RFQs (real-time)
+
+
+
+On this page
+
+# Get RFQs (real-time)
+
+Obtain real-time inquiry information. **Up to 50 requests per second**
+
+info
+
+  * Obtain RFQs in real-time.
+  * If both rfqId and rfqLinkId are passed, only rfqId is considered.
+  * Sorted in descending order by createdAt.
+  * During periods of extreme market volatility, this interface may experience increased latency or temporary delays in data delivery
+
+
+
+### HTTP Request​
+
+GET`/v5/rfq/rfq-realtime`Copy
+
+### Request Parameters​
+
+Parameter| Required| Type| Comments  
+---|---|---|---  
+rfqId|  _false_|  string| Inquiry ID  
+rfqLinkId|  _false_|  string| Custom inquiry ID, traderType is quote, this field is invalid  
+traderType| false| string| Trader type, `quote` , `request`. Default: `quote`  
+  
+### Response Parameters​
+
+Parameter| Type| Comments  
+---|---|---  
+list| array| An array of RFQs  
+> rfqId| string| Inquiry ID  
+> rfqLinkId| string| Custom RFQ ID. Not publicly disclosed.  
+>counterparties| array of srings| List of bidders  
+> expiresAt| string| The inquiry's expiration time (ms)  
+> strategyType| string| Inquiry label  
+> status| string| Status of the RFQ: `Active` `PendingFill` `Canceled` `Filled` `Expired` `Failed`  
+> acceptOtherQuoteStatus| string| Whether to accept non-LP quotes. The default value is `false`: `false`: Default value, do not accept non-LP quotes. `true`: Accept non-LP quotes  
+> deskCode| string| The unique identification code of the inquiring party, which is not visible when anonymous was set to `true` when the RFQ was created  
+> createdAt| string| Time (ms) when the trade is created in epoch, such as 1650380963  
+> updatedAt| string| Time (ms) when the trade is updated in epoch, such as 1650380964  
+> legs| array of objects| Combination transaction  
+>> category| string| category. Valid values include: "linear", "option" and "spot"  
+>> symbol| string| The unique instrument ID  
+>> side| string| Inquiry direction: Valid values are `Buy` and `Sell` .  
+>> qty| string| Order quantity of the instrument.  
+  
+### Request Example​
+    
+    
+    GET /v5/rfq/rfq-realtime HTTP/1.1  
+    Host: api-testnet.bybit.com  
+    X-BAPI-API-KEY: xxxxxxxxxxxxxxxxxx  
+    X-BAPI-TIMESTAMP: 1676430842094  
+    X-BAPI-RECV-WINDOW: 5000  
+    X-BAPI-SIGN: XXXXXX  
+    
+
+### Response Example​
+    
+    
+    {  
+        "retCode": 0,  
+        "retMsg": "OK",  
+        "result": {  
+            "list": [  
+                {  
+                    "rfqLinkId": "",  
+                    "rfqId": "1756885055799241492396882271696580",  
+                    "counterparties": [  
+                        "hashwave2"  
+                    ],  
+                    "strategyType": "custom",  
+                    "expiresAt": "1756885655801",  
+                    "status": "Active",  
+                    "acceptOtherQuoteStatus":"false",  
+                    "deskCode": "1nu9d1",  
+                    "createdAt": "1756885055801",  
+                    "updatedAt": "1756885055801",  
+                    "legs": [  
+                        {  
+                            "category": "linear",  
+                            "symbol": "BTCUSDT",  
+                            "side": "Buy",  
+                            "qty": "1"  
+                        }  
+                    ]  
+                }  
+            ]  
+        },  
+        "retExtInfo": {},  
+        "time": 1756885059062  
+    }  
+    
+
+[PreviousCancel All Quotes](https://bybit-exchange.github.io/docs/v5/rfq/trade/cancel-all-quotes)[NextGet RFQs](https://bybit-exchange.github.io/docs/v5/rfq/trade/rfq-list)
+
+  * HTTP Request
+  * Request Parameters
+  * Response Parameters
+  * Request Example
+  * Response Example
+
+

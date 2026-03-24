@@ -1,0 +1,113 @@
+# Get Lending Market
+
+> **Source:** https://bybit-exchange.github.io/docs/v5/new-crypto-loan/fixed/supply-market
+
+---
+
+  * [](https://bybit-exchange.github.io/docs/)
+  * Crypto Loan (New)
+  * Fixed Loan
+  * Get Lending Market
+
+
+
+On this page
+
+# Get Lending Market
+
+info
+
+Does not need authentication.
+
+If you want to supply, you can use this endpoint to check whether there are any suitable counterparty borrow orders available.
+
+### HTTP Request​
+
+GET`/v5/crypto-loan-fixed/supply-order-quote`Copy
+
+### Request Parameters​
+
+Parameter| Required| Type| Comments  
+---|---|---|---  
+orderCurrency| **true**|  string| Coin name  
+term| false| string| Fixed term `7`: 7 days; `14`: 14 days; `30`: 30 days; `90`: 90 days; `180`: 180 days  
+orderBy| **true**|  string| Order by, `apy`: annual rate; `term`; `quantity`  
+sort| false| integer| `0`: ascend, default; `1`: descend  
+limit| false| integer| Limit for data size per page. [`1`, `100`]. Default: `10`  
+  
+### Response Parameters​
+
+Parameter| Type| Comments  
+---|---|---  
+list| array| Object  
+> orderCurrency| string| Coin name  
+> term| integer| Fixed term `7`: 7 days; `14`: 14 days; `30`: 30 days; `90`: 90 days; `180`: 180 days  
+> annualRate| string| Annual rate  
+> qty| string| Quantity  
+  
+### Request Example​
+
+  * HTTP
+  * Python
+  * Node.js
+
+
+    
+    
+    GET /v5/crypto-loan-fixed/supply-order-quote?orderCurrency=USDT&orderBy=apy HTTP/1.1  
+    Host: api-testnet.bybit.com  
+    
+    
+    
+    from pybit.unified_trading import HTTP  
+    session = HTTP(  
+        testnet=True,  
+        api_key="xxxxxxxxxxxxxxxxxx",  
+        api_secret="xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",  
+    )  
+    print(session.get_lending_market_fixed_crypto_loan(  
+        orderCurrency="USDT",  
+        orderBy="apy",  
+    ))  
+    
+    
+    
+      
+    
+
+### Response Example​
+    
+    
+    {  
+        "retCode": 0,  
+        "retMsg": "ok",  
+        "result": {  
+            "list": [  
+                {  
+                    "annualRate": "0.02",  
+                    "orderCurrency": "USDT",  
+                    "qty": "1000.1234",  
+                    "term": 60  
+                },  
+                {  
+                    "annualRate": "0.022",  
+                    "orderCurrency": "USDT",  
+                    "qty": "212.1234",  
+                    "term": 7  
+                }  
+            ]  
+        },  
+        "retExtInfo": {},  
+        "time": 1752652136224  
+    }  
+    
+
+[PreviousGet Repayment History](https://bybit-exchange.github.io/docs/v5/new-crypto-loan/flexible/repay-orders)[NextGet Borrowing Market](https://bybit-exchange.github.io/docs/v5/new-crypto-loan/fixed/borrow-market)
+
+  * HTTP Request
+  * Request Parameters
+  * Response Parameters
+  * Request Example
+  * Response Example
+
+

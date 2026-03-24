@@ -1,0 +1,114 @@
+# Renew Borrow Order
+
+> **Source:** https://bybit-exchange.github.io/docs/v5/new-crypto-loan/fixed/renew
+
+---
+
+  * [](https://bybit-exchange.github.io/docs/)
+  * Crypto Loan (New)
+  * Fixed Loan
+  * Renew Borrow Order
+
+
+
+On this page
+
+# Renew Borrow Order
+
+> Permission: "Spot trade"  
+>  UID rate limit: 1 req / second
+
+info
+
+  * The loan funds are released to the Funding wallet.
+  * The collateral funds are deducted from the Funding wallet, so make sure you have enough collateral amount in the Funding wallet.
+  * This endpoint allows you to re-borrow the principal that was previously repaid. The renewal amount is the same as the amount previously repaid on this loan.
+
+
+
+### HTTP Request​
+
+POST`/v5/crypto-loan-fixed/renew`Copy
+
+### Request Parameters​
+
+Parameter| Required| Type| Comments  
+---|---|---|---  
+loanId| **true**|  string| Loan ID  
+collateralList| false| array<object>| Collateral coin list, supports putting up to 100 currency in the array  
+> currency| false| string| Currency used to mortgage  
+> amount| false| string| Amount to mortgage  
+  
+### Response Parameters​
+
+Parameter| Type| Comments  
+---|---|---  
+orderId| string| Loan order ID  
+  
+### Request Example​
+
+  * HTTP
+  * Python
+  * Node.js
+
+
+    
+    
+    POST /v5/crypto-loan-fixed/renew HTTP/1.1  
+    Host: api-testnet.bybit.com  
+    X-BAPI-SIGN: XXXXXX  
+    X-BAPI-API-KEY: XXXXXX  
+    X-BAPI-TIMESTAMP: 1752633649752  
+    X-BAPI-RECV-WINDOW: 5000  
+    Content-Type: application/json  
+    Content-Length: 208  
+      
+    {  
+        "loanId": "2364",  
+        "collateralList": {"currency": "ETH","amount": "1"}  
+    }  
+    
+    
+    
+    from pybit.unified_trading import HTTP  
+    session = HTTP(  
+        testnet=True,  
+        api_key="xxxxxxxxxxxxxxxxxx",  
+        api_secret="xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",  
+    )  
+    print(session.renew_fixed_crypto_loan(  
+        loanId="2364",  
+        collateralList={  
+            "currency": "ETH",  
+            "amount": "1",  
+        },  
+    ))  
+    
+    
+    
+      
+    
+
+### Response Example​
+    
+    
+    {  
+        "retCode": 0,  
+        "retMsg": "ok",  
+        "result": {  
+            "orderId": 49  
+        },  
+        "retExtInfo": {},  
+        "time": 1764142142931  
+    }  
+    
+
+[PreviousCreate Borrow Order](https://bybit-exchange.github.io/docs/v5/new-crypto-loan/fixed/borrow)[NextCreate Supply Order](https://bybit-exchange.github.io/docs/v5/new-crypto-loan/fixed/supply)
+
+  * HTTP Request
+  * Request Parameters
+  * Response Parameters
+  * Request Example
+  * Response Example
+
+

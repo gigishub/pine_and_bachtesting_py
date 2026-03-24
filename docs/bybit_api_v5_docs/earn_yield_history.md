@@ -1,0 +1,128 @@
+# Get Yield History
+
+> **Source:** https://bybit-exchange.github.io/docs/v5/earn/yield-history
+
+---
+
+  * [](https://bybit-exchange.github.io/docs/)
+  * Earn
+  * Get Yield History
+
+
+
+On this page
+
+# Get Yield History
+
+You can get the past 3 months data
+
+info
+
+API key needs "Earn" permission
+
+### HTTP Request​
+
+GET`/v5/earn/yield`Copy
+
+### Request Parameters​
+
+Parameter| Required| Type| Comments  
+---|---|---|---  
+category| **true**|  string| `FlexibleSaving`,`OnChain`  
+productId| false| string| Product ID. **Not supported when`category=OnChain`**; passing this parameter will result in an error.  
+startTime| false| integer| The start timestamp (ms).
+
+  * 1\. If both are not provided, the default is to return data from the last 7 days.
+  * 2\. If both are provided, the difference between the endTime and startTime must be less than or equal to 7 days. 
+
+  
+endTime| false| integer| The endTime timestamp (ms)  
+limit| false| integer| Limit for data size per page. Range: [1, 100]. Default: 50  
+cursor| false| string| Cursor, use the returned `nextPageCursor` to query data for the next page.  
+  
+### Response Parameters​
+
+Parameter| Type| Comments  
+---|---|---  
+nextPageCursor| string| Refer to the `cursor` request parameter  
+list| array| Object  
+> productId| string| Product ID  
+> coin| string| Coin name: "BTC", "ETH"  
+> id| string| Unique key (guaranteed to be unique only under the same user)  
+> amount| string| Yield Amount.Example: 10  
+> yieldType| string| Yield type: `Normal`, `Bonus` (Flexible saving only supports `Normal`)  
+> distributionMode| string| Distribution type: `Auto`, `Manual`, `Reinvest`
+
+  * `Auto`: Automatically distributed daily 
+  * `Manual`: Distributed when the user redeems 
+  * `Reinvest`: Reinvestment (not yet available)
+
+  
+> effectiveStakingAmount| string| Effective staking amount, e.g., 1000.00  
+> orderId| string| Redemption order UUID ,For `FlexibleSaving`,Only returns order ID if `distribution_mode` is `Manual`  
+> status| string| Order status: `Pending`, `Success`, `Fail`  
+> createdAt| string| Order creation time in milliseconds, e.g., 1684738540561  
+  
+### Request Example​
+
+  * HTTP
+  * Python
+  * Node.js
+
+
+    
+    
+    GET /v5/earn/yield?category=FlexibleSaving HTTP/1.1  
+    Host: api-testnet.bybit.com  
+    X-BAPI-SIGN: XXXXX  
+    X-BAPI-API-KEY: xxxxxxxxxxxxxxxxxx  
+    X-BAPI-TIMESTAMP: 1739937044221  
+    X-BAPI-RECV-WINDOW: 5000  
+    Content-Type: application/json  
+    
+    
+    
+      
+    
+    
+    
+      
+    
+
+### Response Example​
+    
+    
+    {  
+        "retCode": 0,  
+        "retMsg": "",  
+        "result": {  
+            "yield": [  
+                {  
+                    "productId": "428",  
+                    "coin": "USDT",  
+                    "id": "1002096",  
+                    "amount": "0.0608",  
+                    "yieldType": "Normal",  
+                    "distributionMode": "Manual",  
+                    "effectiveStakingAmount": "1000",  
+                    "orderId": "05a7012d-c4d6-493a-8c6b-023a1038944a",  
+                    "status": "Success",  
+                    "createdAt": "1759993805000"  
+                }  
+            ],  
+            "nextPageCursor": ""  
+        },  
+        "retExtInfo": {},  
+        "time": 1759993815641  
+    }  
+    
+
+[PreviousModify Position](https://bybit-exchange.github.io/docs/v5/earn/modify-position)[NextGet Hourly Yield History](https://bybit-exchange.github.io/docs/v5/earn/hourly-yield)
+
+  * HTTP Request
+  * Request Parameters
+  * Response Parameters
+  * Request Example
+  * Response Example
+
+

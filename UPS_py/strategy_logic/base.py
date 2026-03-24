@@ -2,7 +2,10 @@ from __future__ import annotations
 
 import pandas as pd
 
-from indicators import ind_atr, ind_ema, zen_bars_above_ma, zen_bars_below_ma, zen_bars_crossed_ma
+try:
+    from ..indicators import ind_atr, ind_ema, zen_bars_above_ma, zen_bars_below_ma, zen_bars_crossed_ma
+except ImportError:  # Backward-compatible when imported as top-level `strategy_logic`
+    from indicators import ind_atr, ind_ema, zen_bars_above_ma, zen_bars_below_ma, zen_bars_crossed_ma
 
 
 def compute_base_and_ma_context(

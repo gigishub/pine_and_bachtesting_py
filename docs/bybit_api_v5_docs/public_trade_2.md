@@ -1,0 +1,107 @@
+# Trade
+
+> **Source:** https://bybit-exchange.github.io/docs/v5/websocket/public/trade
+
+---
+
+  * [](https://bybit-exchange.github.io/docs/)
+  * WebSocket Stream
+  * Public
+  * Trade
+
+
+
+On this page
+
+# Trade
+
+Subscribe to the recent trades stream.
+
+After subscription, you will be pushed trade messages in real-time.
+
+Push frequency: **real-time**
+
+**Topic:**  
+`publicTrade.{symbol}`  
+**Note** : option uses baseCoin, e.g., publicTrade.BTC
+
+note
+
+  * For Futures and Spot, a single message may have up to 1024 trades. As such, multiple messages may be sent for the same `seq`.
+  * **PreLaunch contracts** : there is no feed until `ContinuousTrading` stage
+
+
+
+### Response Parameters​
+
+Parameter| Type| Comments  
+---|---|---  
+id| string| Message id. _Unique field for option_  
+topic| string| Topic name  
+type| string| Data type. `snapshot`  
+ts| number| The timestamp (ms) that the system generates the data  
+data| array| Object. Sorted by the time the trade was matched in ascending order  
+> T| number| The timestamp (ms) that the order is filled  
+> s| string| Symbol name  
+> S| string| Side of taker. `Buy`,`Sell`  
+> v| string| Trade size  
+> p| string| Trade price  
+> [L](https://bybit-exchange.github.io/docs/v5/enum#tickdirection)| string| Direction of price change. _Unique field for Perps & futures_  
+> i| string| Trade ID  
+> BT| boolean| Whether it is a block trade order or not  
+> RPI| boolean| Whether it is a RPI trade or not  
+> seq| integer| cross sequence  
+> mP| string| Mark price, unique field for `option`  
+> iP| string| Index price, unique field for `option`  
+> mIv| string| Mark iv, unique field for `option`  
+> iv| string| iv, unique field for `option`  
+  
+### Subscribe Example​
+    
+    
+    from pybit.unified_trading import WebSocket  
+    from time import sleep  
+    ws = WebSocket(  
+        testnet=True,  
+        channel_type="linear",  
+    )  
+    def handle_message(message):  
+        print(message)  
+    ws.trade_stream(  
+        symbol="BTCUSDT",  
+        callback=handle_message  
+    )  
+    while True:  
+        sleep(1)  
+    
+
+### Response Example​
+    
+    
+    {  
+        "topic": "publicTrade.BTCUSDT",  
+        "type": "snapshot",  
+        "ts": 1672304486868,  
+        "data": [  
+            {  
+                "T": 1672304486865,  
+                "s": "BTCUSDT",  
+                "S": "Buy",  
+                "v": "0.001",  
+                "p": "16578.50",  
+                "L": "PlusTick",  
+                "i": "20f43950-d8dd-5b31-9112-a178eb6023af",  
+                "BT": false,  
+                "seq": 1783284617  
+            }  
+        ]  
+    }  
+    
+
+[PreviousRPI Orderbook](https://bybit-exchange.github.io/docs/v5/websocket/public/orderbook-rpi)[NextTicker](https://bybit-exchange.github.io/docs/v5/websocket/public/ticker)
+
+  * Response Parameters
+  * Subscribe Example
+  * Response Example
+
+

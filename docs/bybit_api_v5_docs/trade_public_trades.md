@@ -1,0 +1,135 @@
+# Get Public Trades
+
+> **Source:** https://bybit-exchange.github.io/docs/v5/rfq/trade/public-trades
+
+---
+
+  * [](https://bybit-exchange.github.io/docs/)
+  * RFQ Trading
+  * Trade
+  * Get Public Trades
+
+
+
+On this page
+
+# Get Public Trades
+
+Get the recently executed rfq successfully. **Up to 50 requests per second**
+
+### HTTP Request​
+
+GET`/v5/rfq/public-trades`Copy
+
+### Request Parameters​
+
+Parameter| Required| Type| Comments  
+---|---|---|---  
+startTime| false| integer| The timestamp (ms), `startTime` and `endTime` of the order transaction are 30 days  
+endTime| false| integer| The closing timestamp (ms), `startTime` and `endTime` of the order are 30 days  
+limit| false| integer| Return the number of items. [`1`, `100`]. Default: `50`  
+cursor| false| string| Cursor. Use the `nextPageCursor` token from the response to retrieve the next page of the result set  
+  
+### Response Parameters​
+
+Parameter| Type| Comments  
+---|---|---  
+result| Object|   
+> cursor| string| Refer to the `cursor` request parameter  
+> list| array| An array of RFQs  
+>> rfqId| string| Inquiry ID  
+>> strategyType| string| Policy type  
+>> createdAt| string| Time (ms) when the trade is created in epoch, such as 1650380963  
+>> updatedAt| string| Time (ms) when the trade is updated in epoch, such as 1650380964  
+>> legs| array of objects| Combination transaction  
+>>> category| string| category. Valid values include: `linear`, `option` and `spot`  
+>>> symbol| string| The unique instrument ID  
+>>> side| string| Direction, valid values are `Buy` and `Sell`  
+>>> price| string| Execution price  
+>>> qty| string| Number of executions  
+>>> markPrice| string| The futures markPrice at the time of transaction, the spot is indexPrice, and the option is the markPrice of the underlying Price.  
+  
+### Request Example​
+    
+    
+    GET /v5/rfq/public-trades HTTP/1.1  
+    Host: api-testnet.bybit.com  
+    X-BAPI-API-KEY: xxxxxxxxxxxxxxxxxx  
+    X-BAPI-TIMESTAMP: 1676430842094  
+    X-BAPI-RECV-WINDOW: 5000  
+    X-BAPI-SIGN: XXXXXX  
+    
+
+### Response Example​
+    
+    
+    {  
+        "retCode": 0,  
+        "retMsg": "OK",  
+        "result": {  
+            "cursor": "page_token%3D14912%26last_time%3D1756826273947000000%26",  
+            "list": [  
+                {  
+                    "rfqId": "1756892210565322771637442724834278",  
+                    "strategyType": "custom",  
+                    "legs": [  
+                        {  
+                            "category": "spot",  
+                            "symbol": "BTCUSDT",  
+                            "side": "Sell",  
+                            "price": "100000",  
+                            "qty": "0.5",  
+                            "markPrice": "110320"  
+                        }  
+                    ],  
+                    "createdAt": "1756892210567",  
+                    "updatedAt": "1756892215712"  
+                },  
+                {  
+                    "rfqId": "1756891080435210075162963643082323",  
+                    "strategyType": "custom",  
+                    "legs": [  
+                        {  
+                            "category": "linear",  
+                            "symbol": "BTCUSDT",  
+                            "side": "Buy",  
+                            "price": "143843.9",  
+                            "qty": "0.01",  
+                            "markPrice": "143843"  
+                        }  
+                    ],  
+                    "createdAt": "1756891080437",  
+                    "updatedAt": "1756891081550"  
+                },  
+                {  
+                    "rfqId": "1756826272870633375460463539530377",  
+                    "strategyType": "custom",  
+                    "legs": [  
+                        {  
+                            "category": "linear",  
+                            "symbol": "BTCUSDT",  
+                            "side": "Buy",  
+                            "price": "107600.9",  
+                            "qty": "1",  
+                            "markPrice": "108481.73"  
+                        }  
+                    ],  
+                    "createdAt": "1756826272871",  
+                    "updatedAt": "1756826273947"  
+                }  
+            ]  
+        },  
+        "retExtInfo": {},  
+        "time": 1756892357602  
+    }  
+    
+
+[PreviousGet Trade History](https://bybit-exchange.github.io/docs/v5/rfq/trade/trade-list)[NextConnect](https://bybit-exchange.github.io/docs/v5/ws/connect)
+
+  * HTTP Request
+  * Request Parameters
+  * Response Parameters
+  * Request Example
+  * Response Example
+
+

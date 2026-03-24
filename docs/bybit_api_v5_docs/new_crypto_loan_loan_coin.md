@@ -1,0 +1,125 @@
+# Get Borrowable Coins
+
+> **Source:** https://bybit-exchange.github.io/docs/v5/new-crypto-loan/loan-coin
+
+---
+
+  * [](https://bybit-exchange.github.io/docs/)
+  * Crypto Loan (New)
+  * Get Borrowable Coins
+
+
+
+On this page
+
+# Get Borrowable Coins
+
+info
+
+Does not need authentication.
+
+### HTTP Request​
+
+GET`/v5/crypto-loan-common/loanable-data`Copy
+
+### Request Parameters​
+
+Parameter| Required| Type| Comments  
+---|---|---|---  
+vipLevel| false| string| VIP level 
+
+  * `VIP0`, `VIP1`, `VIP2`, `VIP3`, `VIP4`, `VIP5`, `VIP99`(supreme VIP)
+  * `PRO1`, `PRO2`, `PRO3`, `PRO4`, `PRO5`, `PRO6`
+
+  
+currency| false| string| Coin name, uppercase only  
+  
+### Response Parameters​
+
+Parameter| Type| Comments  
+---|---|---  
+list| array| Object  
+> currency| string| Coin name  
+> fixedBorrowable| boolean| Whether support fixed loan  
+> fixedBorrowingAccuracy| integer| Coin precision for fixed loan  
+> flexibleBorrowable| boolean| Whether support flexible loan  
+> flexibleBorrowingAccuracy| integer| Coin precision for flexible loan  
+> maxBorrowingAmount| string| Max borrow limit  
+> minFixedBorrowingAmount| string| Minimum amount for each fixed loan order  
+> minFlexibleBorrowingAmount| string| Minimum amount for each flexible loan order  
+> vipLevel| string| VIP level  
+> flexibleAnnualizedInterestRate| integer| The annualized interest rate for flexible borrowing. If the loan currency does not support flexible borrowing, it will always be """"  
+> annualizedInterestRate7D| string| The lowest annualized interest rate for fixed borrowing for 7 days that the market can currently provide. If there is no lending in the current market, then it is empty string  
+> annualizedInterestRate14D| string| The lowest annualized interest rate for fixed borrowing for 14 days that the market can currently provide. If there is no lending in the current market, then it is empty string  
+> annualizedInterestRate30D| string| The lowest annualized interest rate for fixed borrowing for 30 days that the market can currently provide. If there is no lending in the current market, then it is empty string  
+> annualizedInterestRate60D| string| The lowest annualized interest rate for fixed borrowing for 60 days that the market can currently provide. If there is no lending in the current market, then it is empty string  
+> annualizedInterestRate90D| string| The lowest annualized interest rate for fixed borrowing for 90 days that the market can currently provide. If there is no lending in the current market, then it is empty string  
+> annualizedInterestRate180D| string| The lowest annualized interest rate for fixed borrowing for 180 days that the market can currently provide. If there is no lending in the current market, then it is empty string  
+  
+### Request Example​
+
+  * HTTP
+  * Python
+  * Node.js
+
+
+    
+    
+    GET /v5/crypto-loan-common/loanable-data?currency=ETH&vipLevel=VIP5 HTTP/1.1  
+    Host: api-testnet.bybit.com  
+    
+    
+    
+    from pybit.unified_trading import HTTP  
+    session = HTTP(  
+        testnet=True,  
+    )  
+    print(session.get_borrowable_coins_new_crypto_loan())  
+    
+    
+    
+      
+    
+
+### Response Example​
+    
+    
+    {  
+        "retCode": 0,  
+        "retMsg": "ok",  
+        "result": {  
+            "list": [  
+                {  
+                    "currency": "ETH",  
+                    "fixedBorrowable": true,  
+                    "fixedBorrowingAccuracy": 6,  
+                    "flexibleBorrowable": true,  
+                    "flexibleBorrowingAccuracy": 4,  
+                    "maxBorrowingAmount": "1100",  
+                    "minFixedBorrowingAmount": "0.1",  
+                    "minFlexibleBorrowingAmount": "0.001",  
+                    "vipLevel": "VIP5",  
+                    "annualizedInterestRate14D": "0.08",  
+                    "annualizedInterestRate180D": "",  
+                    "annualizedInterestRate30D": "",  
+                    "annualizedInterestRate60D": "",  
+                    "annualizedInterestRate7D": "",  
+                    "annualizedInterestRate90D": "",  
+                    "flexibleAnnualizedInterestRate": "0.001429799316"  
+                }  
+            ]  
+        },  
+        "retExtInfo": {},  
+        "time": 1752573126653  
+    }  
+    
+
+[PreviousGet Auto Repay Mode](https://bybit-exchange.github.io/docs/v5/spot-margin-uta/get-auto-repay-mode)[NextGet Collateral Coins](https://bybit-exchange.github.io/docs/v5/new-crypto-loan/collateral-coin)
+
+  * HTTP Request
+  * Request Parameters
+  * Response Parameters
+  * Request Example
+  * Response Example
+
+

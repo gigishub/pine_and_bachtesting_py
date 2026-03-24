@@ -1,0 +1,109 @@
+# Get Currency Data
+
+> **Source:** https://bybit-exchange.github.io/docs/v5/spot-margin-uta/currency-data
+
+---
+
+  * [](https://bybit-exchange.github.io/docs/)
+  * Spot Margin Trade (UTA)
+  * Get Currency Data
+
+
+
+On this page
+
+# Get Currency Data
+
+info
+
+If the borrowable switch is disabled (`false`), the related configuration fields will return `""`.
+
+### HTTP Request​
+
+GET`/v5/spot-margin-trade/currency-data`Copy
+
+### Request Parameters​
+
+Parameter| Required| Type| Comments  
+---|---|---|---  
+currency| false| string| Coin name, uppercase only  
+  
+### Response Parameters​
+
+Parameter| Type| Comments  
+---|---|---  
+list| array| Object  
+> currency| string| Coin name  
+> flexibleManualBorrowable| boolean| Whether flexible manual borrow is enabled. `true`: enabled, `false`: disabled  
+> minFlexibleManualBorrowQty| string| Min flexible manual borrow qty  
+> flexibleManualBorrowAccuracy| string| Coin precision for flexible manual borrow  
+> fixedManualBorrowable| boolean| Whether fixed manual borrow is enabled. `true`: enabled, `false`: disabled  
+> minFixedManualBorrowQty| string| Min fixed manual borrow qty  
+> fixedManualBorrowAccuracy| string| Coin precision for fixed manual borrow  
+> fixedInterestRateAccuracy| string| Coin precision for fixed manual borrow interest rate.  
+> minFixedInterestRate| string| Min fixed manual borrow interest rate, e.g.: `0.01`  
+> maxFixedInterestRate| string| Max fixed manual borrow interest rate, e.g.: `0.8`  
+  
+* * *
+
+### Request Example​
+
+  * HTTP
+  * Python
+  * Node.js
+
+
+    
+    
+    GET /v5/spot-margin-trade/currency-data?currency=BTC HTTP/1.1  
+    Host: api.bybit.com  
+    X-BAPI-SIGN: XXXXX  
+    X-BAPI-API-KEY: xxxxxxxxxxxxxxxxxx  
+    X-BAPI-TIMESTAMP: 1773220082000  
+    X-BAPI-RECV-WINDOW: 5000  
+    
+    
+    
+      
+    
+    
+    
+      
+    
+
+### Response Example​
+    
+    
+    {  
+        "retCode": 0,  
+        "retMsg": "OK",  
+        "result": {  
+            "list": [  
+                {  
+                    "currency": "BTC",  
+                    "flexibleManualBorrowable": true,  
+                    "minFlexibleManualBorrowQty": "0.001",  
+                    "flexibleManualBorrowAccuracy": "8",  
+                    "fixedManualBorrowable": false,  
+                    "minFixedManualBorrowQty": "",  
+                    "fixedManualBorrowAccuracy": "",  
+                    "fixedInterestRateAccuracy": "",  
+                    "minFixedInterestRate": "",  
+                    "maxFixedInterestRate": ""  
+                }  
+            ]  
+        },  
+        "retExtInfo": "{}",  
+        "time": 1773220082091  
+    }  
+    
+
+[PreviousGet Tiered Collateral Ratio](https://bybit-exchange.github.io/docs/v5/spot-margin-uta/tier-collateral-ratio)[NextGet Historical Interest Rate](https://bybit-exchange.github.io/docs/v5/spot-margin-uta/historical-interest)
+
+  * HTTP Request
+  * Request Parameters
+  * Response Parameters
+  * Request Example
+  * Response Example
+
+

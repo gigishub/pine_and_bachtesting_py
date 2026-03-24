@@ -1,0 +1,95 @@
+# Execute Quote
+
+> **Source:** https://bybit-exchange.github.io/docs/v5/rfq/trade/execute-quote
+
+---
+
+  * [](https://bybit-exchange.github.io/docs/)
+  * RFQ Trading
+  * Trade
+  * Execute Quote
+
+
+
+On this page
+
+# Execute Quote
+
+Execute quote – only for the creator of the RFQ. **Up to 50 requests** per second.
+
+info
+
+This endpoint is asynchronous. You must check the [Get Trade History](https://bybit-exchange.github.io/docs/v5/rfq/trade/trade-list) endpoint or listen to the [Execution](https://bybit-exchange.github.io/docs/v5/rfq/websocket/private/transaction) WebSocket topic to confirm if the execution was successful.
+
+### HTTP Request​
+
+POST`/v5/rfq/execute-quote`Copy
+
+### Request Parameters​
+
+Parameter| Required| Type| Comments  
+---|---|---|---  
+rfqId| **true**|  string| Inquiry ID  
+quoteId| **true**|  string| Quote ID  
+quoteSide| **true**|  string| The direction of the quote is `Buy` or `Sell` . When the direction of the quote is `Buy` , for the maker, the execution direction is the same as the direction in legs, and for the taker, it is opposite. Conversely, the same applies  
+  
+### Response Parameters​
+
+Parameter| Type| Comments  
+---|---|---  
+result| object|   
+> rfqId| string| Inquiry ID  
+>rfqLinkId| string|   
+> quoteId| string| Quote ID  
+> status| string| Order status: 
+
+  * `PendingFill`: Order has been sent to the matching engine but not yet filled.
+  * `Failed`: Order failed
+
+  
+  
+### Request Example​
+    
+    
+    POST /v5/rfq/execute-quote HTTP/1.1  
+    Host: api-testnet.bybit.com  
+    X-BAPI-SIGN: XXXXXX  
+    X-BAPI-API-KEY: XXXXXX  
+    X-BAPI-TIMESTAMP: 1744083949347  
+    X-BAPI-RECV-WINDOW: 5000  
+    Content-Type: application/json  
+    Content-Length: 115  
+      
+     {  
+      "rfqId":"1754364447601610516653123084412812",  
+      "quoteId": "111",  
+      "quoteSide":"Buy"  
+    }  
+    
+
+### Response Example​
+    
+    
+    {  
+        "retCode": 0,  
+        "retMsg": "OK",  
+        "result": {  
+            "rfqId": "175740700350925204128457980089654",  
+            "rfqLinkId": "",  
+            "quoteId": "1757407015586174663206671159484665",  
+            "status": "PendingFill"  
+        },  
+        "retExtInfo": {},  
+        "time": 1757407058177  
+    }  
+    
+
+[PreviousCreate Quote](https://bybit-exchange.github.io/docs/v5/rfq/trade/create-quote)[NextCancel Quote](https://bybit-exchange.github.io/docs/v5/rfq/trade/cancel-quote)
+
+  * HTTP Request
+  * Request Parameters
+  * Response Parameters
+  * Request Example
+  * Response Example
+
+

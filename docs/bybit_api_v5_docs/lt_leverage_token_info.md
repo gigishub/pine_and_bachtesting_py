@@ -1,0 +1,108 @@
+# Get Leverage Token Info
+
+> **Source:** https://bybit-exchange.github.io/docs/v5/lt/leverage-token-info
+
+---
+
+On this page
+
+# Get Leverage Token Info
+
+Query leverage token information
+
+### HTTP Request​
+
+GET`/v5/spot-lever-token/info`Copy
+
+### Request Parameters​
+
+Parameter| Required| Type| Comments  
+---|---|---|---  
+ltCoin| false| string| Abbreviation of the LT, such as `BTC3L`  
+  
+### Response Parameters​
+
+Parameter| Type| Comments  
+---|---|---  
+list| array| Object  
+> ltCoin| string| Abbreviation  
+> ltName| string| Full name of leveraged token  
+> maxPurchase| string| Single maximum purchase amount  
+> minPurchase| string| Single minimum purchase amount  
+> maxPurchaseDaily| string| Maximum purchase amount in a single day  
+> maxRedeem| string| Single Maximum redemption quantity  
+> minRedeem| string| Single Minimum redemption quantity  
+> maxRedeemDaily| string| Maximum redemption quantity in a single day  
+> purchaseFeeRate| string| Purchase fee rate  
+> redeemFeeRate| string| Redeem fee rate  
+> [ltStatus](https://bybit-exchange.github.io/docs/v5/enum#ltstatus)| string| Whether the leverage token can be purchased or redeemed  
+> fundFee| string| Funding fee charged daily for users holding leveraged token  
+> fundFeeTime| string| The time to charge funding fee  
+> manageFeeRate| string| Management fee rate  
+> manageFeeTime| string| The time to charge management fee  
+> value| string| Nominal asset value  
+> netValue| string| Net value  
+> total| string| Total purchase upper limit  
+  
+### Request Example​
+
+  * HTTP
+  * Python
+
+
+    
+    
+    GET /v5/spot-lever-token/info?ltCoin=BTC3L HTTP/1.1  
+    Host: api-testnet.bybit.com  
+    
+    
+    
+    from pybit.unified_trading import HTTP  
+    session = HTTP(testnet=True)  
+    print(session.get_leveraged_token_info(  
+        ltCoin="BTC3L",  
+    ))  
+    
+
+### Response Example​
+    
+    
+    {  
+        "retCode": 0,  
+        "retMsg": "OK",  
+        "result": {  
+            "list": [  
+                {  
+                    "fundFee": "299.70622821",  
+                    "fundFeeTime": "1672992000000",  
+                    "ltCoin": "BTC3L",  
+                    "ltName": "3X Long",  
+                    "ltStatus": "1",  
+                    "manageFeeRate": "0.00005",  
+                    "manageFeeTime": "1673053200000",  
+                    "maxPurchase": "10000",  
+                    "maxPurchaseDaily": "200000",  
+                    "maxRedeem": "14434",  
+                    "maxRedeemDaily": "2100000",  
+                    "minPurchase": "100",  
+                    "minRedeem": "144",  
+                    "netValue": "0.376482201140738147",  
+                    "purchaseFeeRate": "0.0005",  
+                    "redeemFeeRate": "0.0005",  
+                    "total": "5000000",  
+                    "value": "49464463114.022994974075443169"  
+                }  
+            ]  
+        },  
+        "retExtInfo": {},  
+        "time": 1672991427073  
+    }  
+    
+
+  * HTTP Request
+  * Request Parameters
+  * Response Parameters
+  * Request Example
+  * Response Example
+
+

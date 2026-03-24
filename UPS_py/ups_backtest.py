@@ -533,65 +533,7 @@ if __name__ == "__main__":
             end_time=args.end_time,
         )
 
-
-    settings = Settings(
-        # MA
-        ma_length=50,
-        max_candles_beyond_ma=1,
-        ma_consolidation_lookback=10,
-        ma_consolidation_count=4,
-        ma_breach_lookback=5,
-        # IQ
-        use_iq_filter=True,
-        iq_lookback=20,
-        iq_min_score=0.55,
-        iq_slope_atr_scale=1.5,
-        iq_er_weight=0.5,
-        iq_slope_weight=0.3,
-        iq_bias_weight=0.2,
-        use_sq_boost=True,
-        sq_boost_weight=0.3,
-        sq_vol_lookback=20,
-        # Patterns
-        enable_ec=True,
-        enable_bullish_engulfing=True,
-        enable_shooting_star=True,
-        enable_hammer=True,
-        ec_wick=False,
-        atr_max_size=2.5,
-        rejection_wick_max_size=0.0,
-        hammer_fib=0.3,
-        hammer_size=0.1,
-        # Stops & targets
-        stop_multiplier=1.0,
-        risk_reward_multiplier=1.0,
-        minimum_rr=0.0,
-        pb_reference="Close",
-        sl_reference="High/Low",
-        # Trailing
-        trail_stop=True,
-        trail_stop_size=1.0,
-        trail_source="High/Low",
-        # Lookback / misc
-        lookback=5,
-        atr_length=14,
-        point_allowance=0,
-        # Backtester
-        risk_per_trade=1.0,
-    )
-
-    df = load_ohlcv_kucoin(
-        symbol="XBTUSDTM",
-        market_type="futures",
-        timeframe="1day",
-        start_time="2020-03-25 00:00:00",
-        end_time=None,
-    )
-
-    bt, stats = run(data, settings=settings)
-    print(stats)
-
-    # bt, result = run(data)
-    # print(result)
-    # if not args.no_plot:
-    #     bt.plot(filename=args.plot_filename)
+    bt, result = run(data)
+    print(result)
+    if not args.no_plot:
+        bt.plot(filename=args.plot_filename)

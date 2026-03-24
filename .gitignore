@@ -36,3 +36,6 @@ Thumbs.db
 *.h5
 *.parquet
 *.pkl
+
+#env
+.env

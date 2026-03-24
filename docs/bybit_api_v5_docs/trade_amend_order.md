@@ -1,0 +1,95 @@
+# Amend Order
+
+> **Source:** https://bybit-exchange.github.io/docs/v5/spread/trade/amend-order
+
+---
+
+  * [](https://bybit-exchange.github.io/docs/)
+  * Spread Trading
+  * Trade
+  * Amend Order
+
+
+
+On this page
+
+# Amend Order
+
+info
+
+You can only modify **unfilled** or **partially filled** orders.
+
+### HTTP Request​
+
+POST`/v5/spread/order/amend`Copy
+
+### Request Parameters​
+
+Parameter| Required| Type| Comments  
+---|---|---|---  
+symbol| **true**|  string| Spread combination symbol name  
+orderId| false| string| Spread combination order ID. Either `orderId` or `orderLinkId` is **required**  
+orderLinkId| false| string| User customised order ID. Either `orderId` or `orderLinkId` is **required**  
+qty| false| string| Order quantity after modification. Either `qty` or `price` is **required**  
+price| false| string| Order price after modification 
+
+  * Either `qty` or `price` is **required**
+  * price="" means the price remains unchanged, while price="0" updates the price to 0.
+
+  
+  
+info
+
+The acknowledgement of an amend order request indicates that the request was sucessfully accepted. This request is asynchronous so please use the websocket to confirm the order status.
+
+### Response Parameters​
+
+Parameter| Type| Comments  
+---|---|---  
+orderId| string| Order ID  
+orderLinkId| string| User customised order ID  
+  
+### Request Example​
+    
+    
+    POST /v5/spread/order/amend HTTP/1.1  
+    Host: api-testnet.bybit.com  
+    X-BAPI-SIGN: XXXXXX  
+    X-BAPI-API-KEY: XXXXXX  
+    X-BAPI-TIMESTAMP: 1744083949347  
+    X-BAPI-RECV-WINDOW: 5000  
+    Content-Type: application/json  
+    Content-Length: 115  
+      
+    {  
+        "symbol": "SOLUSDT_SOL/USDT",  
+        "orderLinkId": "1744072052193428475",  
+        "price": "14",  
+        "qty": "0.2"  
+    }  
+    
+
+### Response Example​
+    
+    
+    {  
+        "retCode": 0,  
+        "retMsg": "OK",  
+        "result": {  
+            "orderId": "b0e6c938-9731-4122-8552-01e6dc06b303",  
+            "orderLinkId": "1744072052193428475"  
+        },  
+        "retExtInfo": {},  
+        "time": 1744083952599  
+    }  
+    
+
+[PreviousCreate Order](https://bybit-exchange.github.io/docs/v5/spread/trade/create-order)[NextCancel Order](https://bybit-exchange.github.io/docs/v5/spread/trade/cancel-order)
+
+  * HTTP Request
+  * Request Parameters
+  * Response Parameters
+  * Request Example
+  * Response Example
+
+

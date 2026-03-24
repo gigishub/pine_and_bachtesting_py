@@ -16,7 +16,6 @@ Outputs:
 """
 
 import argparse
-import os
 import re
 import sys
 import time
@@ -165,6 +164,67 @@ def collect_links(soup: BeautifulSoup, base_url: str, base_domain: str) -> list[
     return list(dict.fromkeys(links))   # deduplicated, order-preserved
 
 
+def collect_links_from_sitemap(
+    session: requests.Session,
+    base_url: str,
+    base_domain: str,
+) -> list[str]:
+    """Collect links from sitemap.xml if available.
+
+    This is useful for docs sites that render nav links client-side,
+    where static HTML contains only a small subset of pages.
+    """
+    parsed_base = urlparse(base_url)
+    base_parts = [p for p in parsed_base.path.split("/") if p]
+    # Keep crawls focused by section, e.g. /docs/v5 when started from /docs/v5/intro.
+    if len(base_parts) >= 2:
+        path_prefix = "/" + "/".join(base_parts[:2])
+    elif base_parts:
+        path_prefix = "/" + base_parts[0]
+    else:
+        path_prefix = "/docs"
+    # Try docs-local sitemap first, then host-level sitemap.
+    sitemap_candidates = [
+        urljoin(base_url, "sitemap.xml"),
+        f"{parsed_base.scheme}://{base_domain}/docs/sitemap.xml",
+        f"{parsed_base.scheme}://{base_domain}/sitemap.xml",
+    ]
+
+    links: list[str] = []
+    for sitemap_url in sitemap_candidates:
+        try:
+            resp = session.get(sitemap_url, timeout=15)
+            resp.raise_for_status()
+        except requests.RequestException:
+            continue
+
+        loc_matches = re.findall(r"<loc>(.*?)</loc>", resp.text, flags=re.IGNORECASE | re.DOTALL)
+        for raw_loc in loc_matches:
+            url = (raw_loc or "").strip()
+            if not url:
+                continue
+
+            p = urlparse(url)
+            if p.scheme not in ("http", "https"):
+                continue
+            if p.hostname != base_domain:
+                continue
+            if not p.path.startswith(path_prefix):
+                continue
+
+            # Skip utility pages that are not useful as API reference docs.
+            if p.path in ("/docs/search", "/docs/markdown-page"):
+                continue
+
+            links.append(url)
+
+        # First successful sitemap is enough.
+        if links:
+            break
+
+    return list(dict.fromkeys(links))
+
+
 def page_description(soup: BeautifulSoup) -> str:
     """Extract a one-line description from meta or first paragraph."""
     meta = soup.find("meta", attrs={"name": "description"})
@@ -197,8 +257,13 @@ def crawl(index_url: str, max_pages: int) -> None:
     print(f"Output dir   : {out_dir}/")
     print(f"Framework    : {framework}")
 
-    # Build the queue starting from the index page itself
-    to_visit = [index_url] + collect_links(index_soup, index_url, base_domain)
+    # Build queue from sitemap when available; fallback to page links.
+    sitemap_links = collect_links_from_sitemap(session, index_url, base_domain)
+    if sitemap_links:
+        print(f"Sitemap links: {len(sitemap_links)}")
+        to_visit = [index_url] + sitemap_links
+    else:
+        to_visit = [index_url] + collect_links(index_soup, index_url, base_domain)
     to_visit = list(dict.fromkeys(to_visit))[:max_pages]
 
     existing_names: set[str] = set()

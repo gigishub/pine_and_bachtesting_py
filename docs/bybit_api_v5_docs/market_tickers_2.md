@@ -1,0 +1,94 @@
+# Get Tickers
+
+> **Source:** https://bybit-exchange.github.io/docs/v5/spread/market/tickers
+
+---
+
+  * [](https://bybit-exchange.github.io/docs/)
+  * Spread Trading
+  * Market
+  * Get Tickers
+
+
+
+On this page
+
+# Get Tickers
+
+Query for the latest price snapshot, best bid/ask price, and trading volume of different spread combinations in the last 24 hours.
+
+info
+
+  * During periods of extreme market volatility, this interface may experience increased latency or temporary delays in data delivery
+
+
+
+### HTTP Request​
+
+GET`/v5/spread/tickers`Copy
+
+### Request Parameters​
+
+Parameter| Required| Type| Comments  
+---|---|---|---  
+symbol| **true**|  string| Spread combination symbol name  
+  
+### Response Parameters​
+
+Parameter| Type| Comments  
+---|---|---  
+list| array<object>| Ticker info  
+> symbol| string| Spread combination symbol name  
+> bidPrice| string| Bid 1 price  
+> bidSize| string| Bid 1 size  
+> askPrice| string| Ask 1 price  
+> askSize| string| Ask 1 size  
+> lastPrice| string| Last trade price  
+> highPrice24h| string| The highest price in the last 24 hours  
+> lowPrice24h| string| The lowest price in the last 24 hours  
+> prevPrice24h| string| Price 24 hours ago  
+> volume24h| string| Volume for 24h  
+  
+### Request Example​
+    
+    
+    GET /v5/spread/tickers?symbol=SOLUSDT_SOL/USDT HTTP/1.1  
+    Host: api-testnet.bybit.com  
+    
+
+### Response Example​
+    
+    
+    {  
+        "retCode": 0,  
+        "retMsg": "Success",  
+        "result": {  
+            "list": [  
+                {  
+                    "symbol": "SOLUSDT_SOL/USDT",  
+                    "bidPrice": "",  
+                    "bidSize": "",  
+                    "askPrice": "",  
+                    "askSize": "",  
+                    "lastPrice": "19.444",  
+                    "highPrice24h": "23.8353",  
+                    "lowPrice24h": "0",  
+                    "prevPrice24h": "20",  
+                    "volume24h": "24694.9"  
+                }  
+            ]  
+        },  
+        "retExtInfo": {},  
+        "time": 1744079413254  
+    }  
+    
+
+[PreviousGet Orderbook](https://bybit-exchange.github.io/docs/v5/spread/market/orderbook)[NextGet Recent Public Trades](https://bybit-exchange.github.io/docs/v5/spread/market/recent-trade)
+
+  * HTTP Request
+  * Request Parameters
+  * Response Parameters
+  * Request Example
+  * Response Example
+
+

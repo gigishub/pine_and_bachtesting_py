@@ -1,0 +1,285 @@
+# Get Order History
+
+> **Source:** https://bybit-exchange.github.io/docs/v5/order/order-list
+
+---
+
+  * [](https://bybit-exchange.github.io/docs/)
+  * Trade
+  * Get Order History (2 years)
+
+
+
+On this page
+
+# Get Order History
+
+Query order history. As order creation/cancellation is **asynchronous** , the data returned from this endpoint may delay. If you want to get real-time order information, you could query this [endpoint](https://bybit-exchange.github.io/docs/v5/order/open-order) or rely on the [websocket stream](https://bybit-exchange.github.io/docs/v5/websocket/private/order) (recommended).
+
+rule
+
+  * The orders in the **last 7 days** :  
+support querying all [closed status](https://bybit-exchange.github.io/docs/v5/enum#orderstatus) except "Cancelled", "Rejected", "Deactivated" status
+  * The orders in the **last 24 hours** :  
+the orders with "Cancelled" (fully cancelled order), "Rejected", "Deactivated" can be query
+  * The orders **beyond 7 days** :   
+supports querying orders which have fills only, i.e., fully filled, partial filled but cancelled orders
+
+
+
+### HTTP Request​
+
+GET`/v5/order/history`Copy
+
+### Request Parameters​
+
+Parameter| Required| Type| Comments  
+---|---|---|---  
+[category](https://bybit-exchange.github.io/docs/v5/enum#category)| **true**|  string| Product type `linear`, `inverse`, `spot`, `option`  
+symbol| false| string| Symbol name, like `BTCUSDT`, uppercase only  
+baseCoin| false| string| Base coin, uppercase only  
+settleCoin| false| string| Settle coin, uppercase only  
+orderId| false| string| Order ID  
+orderLinkId| false| string| User customised order ID  
+orderFilter| false| string| `Order`: active order  
+`StopOrder`: conditional order for Futures and Spot  
+`tpslOrder`: spot TP/SL order  
+`OcoOrder`: spot OCO orders  
+`BidirectionalTpslOrder`: Spot bidirectional TPSL order 
+
+  * all kinds of orders are returned by default
+
+  
+[orderStatus](https://bybit-exchange.github.io/docs/v5/enum#orderstatus)| false| string| Order status  
+startTime| false| integer| The start timestamp (ms)
+
+  * startTime and endTime are not passed, return 7 days by default
+  * Only startTime is passed, return range between startTime and startTime+7 days
+  * Only endTime is passed, return range between endTime-7 days and endTime
+  * If both are passed, the rule is endTime - startTime <= 7 days
+
+  
+endTime| false| integer| The end timestamp (ms)  
+limit| false| integer| Limit for data size per page. [`1`, `50`]. Default: `20`  
+cursor| false| string| Cursor. Use the `nextPageCursor` token from the response to retrieve the next page of the result set  
+  
+### Response Parameters​
+
+Parameter| Type| Comments  
+---|---|---  
+category| string| Product type  
+list| array| Object  
+> orderId| string| Order ID  
+> orderLinkId| string| User customised order ID  
+> parentOrderLinkId| string| Indicates the linked parent order for attached take-profit and stop-loss orders. Supported for futures and options.
+
+  * [Amending](https://bybit-exchange.github.io/docs/v5/order/amend-order) take-profit or stop-loss orders does not change the parentOrderLinkId
+  * **Futures** : using [set trading stop](https://bybit-exchange.github.io/docs/v5/position/trading-stop) to update attached TP/SL from the original order does not change the parentOrderLinkId.
+  * **Options** : using [set trading stop](https://bybit-exchange.github.io/docs/v5/position/trading-stop) to update attached TP/SL from the original order will change the parentOrderLinkId.
+  * **Futures & Options**: if TP/SL is set via [set trading stop](https://bybit-exchange.github.io/docs/v5/position/trading-stop) for a position that originally has no attached TP/SL, the parentOrderLinkId is meaningless.
+
+  
+> blockTradeId| string| Block trade ID  
+> symbol| string| Symbol name  
+> price| string| Order price  
+> qty| string| Order qty  
+> side| string| Side. `Buy`,`Sell`  
+> isLeverage| string| Whether to borrow. `0`: false, `1`: true.  
+> [positionIdx](https://bybit-exchange.github.io/docs/v5/enum#positionidx)| integer| Position index. Used to identify positions in different position modes  
+> [orderStatus](https://bybit-exchange.github.io/docs/v5/enum#orderstatus)| string| Order status  
+> [createType](https://bybit-exchange.github.io/docs/v5/enum#createtype)| string| Order create type. Spot does not have this key  
+> [cancelType](https://bybit-exchange.github.io/docs/v5/enum#canceltype)| string| Cancel type  
+> [rejectReason](https://bybit-exchange.github.io/docs/v5/enum#rejectreason)| string| Reject reason  
+> avgPrice| string| Average filled price, returns `""` for those orders without avg price  
+> leavesQty| string| The remaining qty not executed  
+> leavesValue| string| The estimated value not executed  
+> cumExecQty| string| Cumulative executed order qty  
+> cumExecValue| string| Cumulative executed order value  
+> cumExecFee| string| 
+
+  * `inverse`, `option`: Cumulative executed trading fee.
+  * `linear`, `spot`: Deprecated. Use `cumFeeDetail` instead.
+
+  
+> [timeInForce](https://bybit-exchange.github.io/docs/v5/enum#timeinforce)| string| Time in force  
+> [orderType](https://bybit-exchange.github.io/docs/v5/enum#ordertype)| string| Order type. `Market`,`Limit`. For TP/SL orders, is the order type after the order was triggered 
+
+  * `Block trade Roll Back`, `Block trade-Limit`: Unique enum values for Unified account block trades
+
+  
+> [stopOrderType](https://bybit-exchange.github.io/docs/v5/enum#stopordertype)| string| Stop order type  
+> orderIv| string| Implied volatility  
+> marketUnit| string| The unit for `qty` when create **Spot market** orders. `baseCoin`, `quoteCoin`  
+> slippageToleranceType| string| Spot and Futures market order slippage tolerance type `TickSize`, `Percent`, `UNKNOWN`(default)  
+> slippageTolerance| string| Slippage tolerance value  
+> triggerPrice| string| Trigger price. If `stopOrderType`=_TrailingStop_ , it is activate price. Otherwise, it is trigger price  
+> takeProfit| string| Take profit price  
+> stopLoss| string| Stop loss price  
+> tpslMode| string| TP/SL mode, `Full`: entire position for TP/SL. `Partial`: partial position tp/sl. Spot does not have this field, and Option returns always ""  
+> ocoTriggerBy| string| The trigger type of Spot OCO order.`OcoTriggerByUnknown`, `OcoTriggerByTp`, `OcoTriggerBySl`  
+> tpLimitPrice| string| The limit order price when take profit price is triggered  
+> slLimitPrice| string| The limit order price when stop loss price is triggered  
+> [tpTriggerBy](https://bybit-exchange.github.io/docs/v5/enum#triggerby)| string| The price type to trigger take profit  
+> [slTriggerBy](https://bybit-exchange.github.io/docs/v5/enum#triggerby)| string| The price type to trigger stop loss  
+> triggerDirection| integer| Trigger direction. `1`: rise, `2`: fall  
+> [triggerBy](https://bybit-exchange.github.io/docs/v5/enum#triggerby)| string| The price type of trigger price  
+> lastPriceOnCreated| string| Last price when place the order, Spot is not applicable  
+> basePrice| string| Last price when place the order, Spot has this field only  
+> reduceOnly| boolean| Reduce only. `true` means reduce position size  
+> closeOnTrigger| boolean| Close on trigger. [What is a close on trigger order?](https://www.bybit.com/en/help-center/article/Close-On-Trigger-Order)  
+> placeType| string| Place type, `option` used. `iv`, `price`  
+> [smpType](https://bybit-exchange.github.io/docs/v5/enum#smptype)| string| SMP execution type  
+> smpGroup| integer| Smp group ID. If the UID has no group, it is `0` by default  
+> smpOrderId| string| The counterparty's orderID which triggers this SMP execution  
+> createdTime| string| Order created timestamp (ms)  
+> updatedTime| string| Order updated timestamp (ms)  
+> extraFees| string| Trading fee rate information. Currently, this data is returned only for spot orders placed on the Indonesian site or spot fiat currency orders placed on the EU site. In other cases, an empty string is returned. Enum: [feeType](https://bybit-exchange.github.io/docs/v5/enum#extrafeesfeetype), [subFeeType](https://bybit-exchange.github.io/docs/v5/enum#extrafeessubfeetype)  
+> cumFeeDetail| json| 
+
+  * `linear`, `spot`: Cumulative trading fee details instead of `cumExecFee`
+
+  
+nextPageCursor| string| Refer to the `cursor` request parameter  
+[RUN >>](https://bybit-exchange.github.io/docs/api-explorer/v5/trade/order-list)
+
+* * *
+
+### Request Example​
+
+  * HTTP
+  * Python
+  * Java
+  * Node.js
+
+
+    
+    
+    GET /v5/order/history?category=linear&limit=1 HTTP/1.1  
+    Host: api-testnet.bybit.com  
+    X-BAPI-SIGN: XXXXX  
+    X-BAPI-API-KEY: xxxxxxxxxxxxxxxxxx  
+    X-BAPI-TIMESTAMP: 1672221263407  
+    X-BAPI-RECV-WINDOW: 5000  
+    
+    
+    
+    from pybit.unified_trading import HTTP  
+    session = HTTP(  
+        testnet=True,  
+        api_key="xxxxxxxxxxxxxxxxxx",  
+        api_secret="xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",  
+    )  
+    print(session.get_order_history(  
+        category="linear",  
+        limit=1,  
+    ))  
+    
+    
+    
+    import com.bybit.api.client.config.BybitApiConfig;  
+    import com.bybit.api.client.domain.trade.request.TradeOrderRequest;  
+    import com.bybit.api.client.domain.*;  
+    import com.bybit.api.client.domain.trade.*;  
+    import com.bybit.api.client.service.BybitApiClientFactory;  
+    var client = BybitApiClientFactory.newInstance("YOUR_API_KEY", "YOUR_API_SECRET", BybitApiConfig.TESTNET_DOMAIN).newTradeRestClient();  
+    var orderHistory = TradeOrderRequest.builder().category(CategoryType.LINEAR).limit(10).build();  
+    System.out.println(client.getOrderHistory(orderHistory));  
+    
+    
+    
+    const { RestClientV5 } = require('bybit-api');  
+      
+    const client = new RestClientV5({  
+        testnet: true,  
+        key: 'xxxxxxxxxxxxxxxxxx',  
+        secret: 'xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx',  
+    });  
+      
+    client  
+        .getHistoricOrders({  
+            category: 'linear',  
+            limit: 1,  
+        })  
+        .then((response) => {  
+            console.log(response);  
+        })  
+        .catch((error) => {  
+            console.error(error);  
+        });  
+    
+
+### Response Example​
+    
+    
+    {  
+        "retCode": 0,  
+        "retMsg": "OK",  
+        "result": {  
+            "list": [  
+                {  
+                    "orderId": "14bad3a1-6454-43d8-bcf2-5345896cf74d",  
+                    "orderLinkId": "YLxaWKMiHU",  
+                    "blockTradeId": "",  
+                    "symbol": "BTCUSDT",  
+                    "price": "26864.40",  
+                    "qty": "0.003",  
+                    "side": "Buy",  
+                    "isLeverage": "",  
+                    "positionIdx": 1,  
+                    "orderStatus": "Cancelled",  
+                    "cancelType": "UNKNOWN",  
+                    "rejectReason": "EC_PostOnlyWillTakeLiquidity",  
+                    "avgPrice": "0",  
+                    "leavesQty": "0.000",  
+                    "leavesValue": "0",  
+                    "cumExecQty": "0.000",  
+                    "cumExecValue": "0",  
+                    "cumExecFee": "0",  
+                    "timeInForce": "PostOnly",  
+                    "orderType": "Limit",  
+                    "stopOrderType": "UNKNOWN",  
+                    "orderIv": "",  
+                    "triggerPrice": "0.00",  
+                    "takeProfit": "0.00",  
+                    "stopLoss": "0.00",  
+                    "tpTriggerBy": "UNKNOWN",  
+                    "slTriggerBy": "UNKNOWN",  
+                    "triggerDirection": 0,  
+                    "triggerBy": "UNKNOWN",  
+                    "lastPriceOnCreated": "0.00",  
+                    "reduceOnly": false,  
+                    "closeOnTrigger": false,  
+                    "smpType": "None",  
+                    "smpGroup": 0,  
+                    "smpOrderId": "",  
+                    "tpslMode": "",  
+                    "tpLimitPrice": "",  
+                    "slLimitPrice": "",  
+                    "placeType": "",  
+                    "slippageToleranceType": "UNKNOWN",  
+                    "slippageTolerance": "",  
+                    "createdTime": "1684476068369",  
+                    "updatedTime": "1684476068372",  
+                    "extraFees": "",  
+                    "cumFeeDetail": {  
+                        "MNT": "0.00242968"  
+                    }  
+                }  
+            ],  
+            "nextPageCursor": "page_token%3D39380%26",  
+            "category": "linear"  
+        },  
+        "retExtInfo": {},  
+        "time": 1684766282976  
+    }  
+    
+
+[PreviousCancel All Orders](https://bybit-exchange.github.io/docs/v5/order/cancel-all)[NextGet Trade History (2 years)](https://bybit-exchange.github.io/docs/v5/order/execution)
+
+  * HTTP Request
+  * Request Parameters
+  * Response Parameters
+  * Request Example
+  * Response Example
+
+

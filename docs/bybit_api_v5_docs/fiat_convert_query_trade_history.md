@@ -1,0 +1,105 @@
+# Get Convert History
+
+> **Source:** https://bybit-exchange.github.io/docs/v5/asset/fiat-convert/query-trade-history
+
+---
+
+  * [](https://bybit-exchange.github.io/docs/)
+  * Asset
+  * Fiat-Convert
+  * Get Convert History
+
+
+
+On this page
+
+# Get Convert History
+
+Returns all the convert history
+
+### HTTP Request​
+
+GET`/v5/fiat/query-trade-history`Copy
+
+### Request Parameters​
+
+Parameter| Required| Type| Comments  
+---|---|---|---  
+index| false| integer| Page number,started from 1, default 1  
+limit| false| integer| Page Size [20-100] 20 records by default,up to 100 records, return 100 when exceeds 100  
+startTime| false| string| Query start time(Millisecond timestamp)  
+endTime| false| string| Query end time(Millisecond timestamp)  
+  
+### Response Parameters​
+
+Parameter| Type| Comments  
+---|---|---  
+result| array| Array of quotes  
+> tradeNo| string| Trade order No  
+> status| string| Trade status:
+
+  * processing
+  * success
+  * failed
+
+  
+> quoteTxId| string| Quote transaction ID. It is system generated, and it is used to confirm quote  
+> exchangeRate| string| Exchange rate  
+> fromCoin| string| Convert from coin (coin to sell)  
+> fromCoinType| string| From coin type. `fiat` or `crypto`  
+> toCoin| string| Convert to coin (coin to buy)  
+> toCoinType| string| To coin type. `fiat` or `crypto`  
+> fromAmount| string| From coin amount (amount to sell)  
+> toAmount| string| To coin amount (amount to buy according to exchange rate)  
+> createdAt| string| Trade created timee (Millisecond timestamp)  
+> subUserId| string| The user's sub userId in bybit  
+  
+### Request Example​
+
+  * HTTP
+
+
+    
+    
+    GET /v5/fiat/trade-query-history HTTP/1.1  
+    Host: api-testnet.bybit.com  
+    X-BAPI-SIGN: XXXXXX  
+    X-BAPI-API-KEY: xxxxxxxxxxxxxxxxxx  
+    X-BAPI-TIMESTAMP: 1720074159814  
+    X-BAPI-RECV-WINDOW: 5000  
+    
+
+### Response Example​
+    
+    
+    {  
+        "retCode": 0,  
+        "retMsg": "success",  
+        "result": [  
+            {  
+                "tradeNo": "TradeNo123456",  
+                "status": "success",  
+                "quoteTaxId": "QuoteTaxId123456",  
+                "exchangeRate": "1.0",  
+                "fromCoin": "GEL",  
+                "fromCoinType": "fiat",  
+                "toCoin": "USDT",  
+                "toCoinType": "crypto",  
+                "fromAmount": "100",  
+                "toAmount": "100",  
+                "createdAt": "1764560093588",  
+                "subUserId": "123456"  
+            }  
+        ]  
+    }  
+    
+
+[PreviousGet Convert Status](https://bybit-exchange.github.io/docs/v5/asset/fiat-convert/query-trade)[NextGet Balance](https://bybit-exchange.github.io/docs/v5/asset/fiat-convert/balance-query)
+
+  * HTTP Request
+  * Request Parameters
+  * Response Parameters
+  * Request Example
+  * Response Example
+
+

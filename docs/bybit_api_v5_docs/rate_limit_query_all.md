@@ -1,0 +1,103 @@
+# Get All Rate Limits
+
+> **Source:** https://bybit-exchange.github.io/docs/v5/broker/exchange-broker/rate-limit/query-all
+
+---
+
+  * [](https://bybit-exchange.github.io/docs/)
+  * Broker
+  * Exchange Broker
+  * Rate Limit Setup
+  * Get All Rate Limits
+
+
+
+On this page
+
+# Get All Rate Limits
+
+> API rate limit: 1 req per second
+
+info
+
+  * Use the master account to query for all your UID-level rate limits, including all master accounts and subaccounts.
+  * Only exchange broker account can call this endpoint
+  * The accounts that have never had a rate limit configured via [Set Rate Limit](https://bybit-exchange.github.io/docs/v5/broker/exchange-broker/rate-limit/set) will not appear in the response and will use the default rate limit.
+
+
+
+### HTTP Request​
+
+GET`/v5/broker/apilimit/query-all`Copy
+
+### Request Parameters​
+
+Parameter| Required| Type| Comments  
+---|---|---|---  
+limit| false| string| Limit for data size per page. [`1`, `1000`]. Default: `1000`  
+cursor| false| string| Cursor. Use the `nextPageCursor` token from the response to retrieve the next page of the result set  
+uids| false| string| Multiple UIDs across different master accounts, separated by commas. Returns all subaccounts by default  
+  
+### Response Parameters​
+
+Parameter| Type| Comments  
+---|---|---  
+nextPageCursor| string| Refer to the `cursor` request parameter  
+list| array| Object  
+> uids| string| Multiple UIDs separated by commas  
+> [bizType](https://bybit-exchange.github.io/docs/v5/enum#biztype)| string| Business type  
+> rate| integer| API Rate limit per second  
+  
+### Request Example​
+    
+    
+    GET /v5/broker/apilimit/query-all HTTP/1.1  
+    Host: api.bybit.com  
+    X-BAPI-SIGN: XXXXXXX  
+    X-BAPI-API-KEY: xxxxxxxxxxxxxxxxxx  
+    X-BAPI-TIMESTAMP: 1728460942776  
+    X-BAPI-RECV-WINDOW: 5000  
+    Content-Type: application/json  
+    Content-Length: 2  
+    
+
+### Response Example​
+    
+    
+    {  
+        "retCode": 0,  
+        "retMsg": "success",  
+        "result": {  
+            "list": [  
+                {  
+                    "uids": "104270393,1674166,1190923,101446030",  
+                    "bizType": "SPOT",  
+                    "rate": 223  
+                },  
+                {  
+                    "uids": "104074050,104394193,104126066",  
+                    "bizType": "OPTIONS",  
+                    "rate": 223  
+                },  
+                {  
+                    "uids": "104154966,103803484,103995540,100445068",  
+                    "bizType": "DERIVATIVES",  
+                    "rate": 298  
+                }  
+            ],  
+            "nextPageCursor": ""  
+        },  
+        "retExtInfo": {},  
+        "time": 1758857701702  
+    }  
+    
+
+[PreviousGet Rate Limit Cap](https://bybit-exchange.github.io/docs/v5/broker/exchange-broker/rate-limit/query-cap)[NextGet Voucher Spec](https://bybit-exchange.github.io/docs/v5/broker/reward/voucher)
+
+  * HTTP Request
+  * Request Parameters
+  * Response Parameters
+  * Request Example
+  * Response Example
+
+
