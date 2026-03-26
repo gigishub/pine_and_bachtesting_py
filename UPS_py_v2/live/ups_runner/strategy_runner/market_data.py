@@ -5,8 +5,8 @@ from typing import Any
 
 import pandas as pd
 
-from ..bybit_client import BybitV5Client
-from .config import LiveConfig
+from ...bybit_client import BybitV5Client
+from ..config import LiveConfig
 
 
 class LiveMarketDataService:

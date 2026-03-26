@@ -12,8 +12,6 @@ CSV requirements:
 from __future__ import annotations
 
 import argparse
-import sys
-from pathlib import Path
 
 import pandas as pd
 from backtesting.lib import FractionalBacktest

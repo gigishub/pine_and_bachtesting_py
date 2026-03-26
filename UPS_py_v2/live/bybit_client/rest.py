@@ -9,7 +9,7 @@ from typing import Any
 
 import requests
 
-from .types import InstrumentSpec
+from .bybit_types import InstrumentSpec
 
 
 class BybitV5Client:
@@ -58,16 +58,21 @@ class BybitV5Client:
     ) -> dict[str, Any]:
         url = f"{self.base_url}{path}"
         headers: dict[str, str] = {}
+        body_json: str | None = None
+
+        if method.upper() != "GET":
+            # Serialize once so the exact byte string used for signing is also sent on the wire.
+            body_json = json.dumps(body or {}, separators=(",", ":"))
 
         if auth:
             ts = self._now_ms()
             if method.upper() == "GET":
                 payload = ""
                 if params:
-                    # Bybit signs query-string bytes exactly; keep deterministic order.
-                    payload = "&".join(f"{k}={params[k]}" for k in sorted(params.keys()))
+                    # Bybit signs query-string bytes exactly in request order.
+                    payload = "&".join(f"{k}={v}" for k, v in params.items())
             else:
-                payload = json.dumps(body or {}, separators=(",", ":"))
+                payload = body_json or "{}"
 
             headers.update(
                 {
@@ -82,7 +87,7 @@ class BybitV5Client:
             resp = self.session.get(url, params=params, headers=headers, timeout=self.timeout)
         else:
             headers["Content-Type"] = "application/json"
-            resp = self.session.post(url, json=body or {}, headers=headers, timeout=self.timeout)
+            resp = self.session.post(url, data=body_json or "{}", headers=headers, timeout=self.timeout)
 
         resp.raise_for_status()
         data = resp.json()
@@ -167,3 +172,32 @@ class BybitV5Client:
 
     def set_trading_stop(self, payload: dict[str, Any]) -> dict[str, Any]:
         return self._request("POST", "/v5/position/trading-stop", body=payload, auth=True)
+
+    def set_leverage(self, *, category: str, symbol: str, leverage: float) -> dict[str, Any]:
+        lev = str(leverage)
+        return self._request(
+            "POST",
+            "/v5/position/set-leverage",
+            body={
+                "category": category,
+                "symbol": symbol,
+                "buyLeverage": lev,
+                "sellLeverage": lev,
+            },
+            auth=True,
+        )
+
+    def get_wallet_balance(self, *, account_type: str = "UNIFIED", coin: str = "USDT") -> float:
+        """Return available wallet balance for *coin* in USDT."""
+        data = self._request(
+            "GET",
+            "/v5/account/wallet-balance",
+            params={"accountType": account_type, "coin": coin},
+            auth=True,
+        )
+        accounts = data.get("result", {}).get("list", [])
+        for account in accounts:
+            for c in account.get("coin", []):
+                if c.get("coin") == coin:
+                    return float(c.get("availableToWithdraw") or c.get("walletBalance") or 0)
+        return 0.0
