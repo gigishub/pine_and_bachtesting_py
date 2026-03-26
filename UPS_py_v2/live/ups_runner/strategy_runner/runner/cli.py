@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 
+from ....analysis.paths import ensure_analysis_dirs
 from .live_runner import LiveRunner
 from ...config import build_config_from_env
 
@@ -14,5 +15,7 @@ def main() -> None:
     cfg = build_config_from_env()
     if args.dry_run:
         cfg.dry_run = True
+
+    ensure_analysis_dirs(cfg)
 
     LiveRunner(cfg).run_forever()

@@ -26,6 +26,19 @@ Improvement areas (short + precise)
 
 
 6. Order submission latency optimization
+
+takes already a second to process previous candle so issue likely there.
+
+sample
+====
+[2026-03-26 15:26:53 UTC] Starting live runner symbol=XRPUSDT category=linear tf=1m dry_run=False mode=ws
+[2026-03-26 15:26:54 UTC] WebSocket mode active. Warmup candles=399 last=2026-03-26 15:25:00+00:00
+[2026-03-26 15:27:01 UTC] Signal details: price_above_ma=False long_conditions=False bearish_pb=True long_entry=False open_long=False short_conditions=True bullish_pb=True short_entry=False open_short=False
+[2026-03-26 15:27:01 UTC] Processed candle 2026-03-26 15:26:00+00:00 pos=none
+[2026-03-26 15:28:01 UTC] Signal details: price_above_ma=False long_conditions=False bearish_pb=True long_entry=False open_long=False short_conditions=True bullish_pb=True short_entry=False open_short=False
+[2026-03-26 15:28:01 UTC] Processed candle 2026-03-26 15:27:00+00:00 pos=none
+====
+
 Likely problem:
 
 the path from bar-close signal → EntryService.try_entry → orders.place_entry is delayed by pre-check work, sleep timers, or deferred execution path.
@@ -37,8 +50,36 @@ move heavy computation (indicators/risk setup) out of hot path (precompute, cach
 remove non-essential delay (time.sleep(0.2) and extra pending checks) in order submission route.
 
 
+7. is tp actually a limit order since its getting coundted as a mark in tp/sl 
 
-Question: is this hard to implement?
-- Not hard conceptually; the code is modular, so adding precompute + fallback persistence is straightforward.
-- Main effort: save/reload DataFrame safely, state flush hooks, and ensure strict ordering for pending-entry checks.
-- The existing architecture supports it with modest incremental changes.
+i e 
+XRPUSDT
+Perp
+USDT Perpetuals
+Buy
+TP 1.3549 (Mark)
+SL 1.3612 (Mark)
+TP 1.3549
+SL Market
+38.8 XRP
+--
+Close Short
+2026-03-26 15:31:01
+60dc2912
+993c2c4f
+Untriggered
+XRPUSDT
+Perp
+USDT Perpetuals
+Buy
+TP 1.3549 (Mark)
+SL 1.3612 (Mark)
+TP 1.3549
+SL Market
+27.2 XRP
+--
+Close Short
+2026-03-26 15:30:09
+6fb8e827
+a8c9ffc5
+Untriggered

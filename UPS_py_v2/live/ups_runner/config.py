@@ -14,13 +14,14 @@ class LiveConfig:
     api_key: str
     api_secret: str
     testnet: bool = False  # toggle testnet/live environment
+    profile: str = "default"  # analysis/run grouping label for this config setup
 
     # Market selection
     category: str = "linear"  # derivative category: linear/inverse/spot
-    symbol: str = "ATOMUSDT"  # trading pair
+    symbol: str = "AVAXUSDT"  # trading pair
 
     # Data timing
-    timeframe: str = "15m"  # kline timeframe
+    timeframe: str = "5m"  # kline timeframe
     warmup_bars: int = 400  # historical bars needed before live signal execution
     poll_ahead_ms: int = 200  # REST polling lead-in to avoid late bar effects
 
@@ -189,3 +190,4 @@ def build_config_from_env() -> LiveConfig:
     cfg.order_type = _normalize_order_type(cfg.order_type)
 
     return cfg
+ 

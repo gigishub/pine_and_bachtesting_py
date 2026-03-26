@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import pandas as pd
+from uuid import uuid4
 
 from .....strategy.decision.entry import should_open_long, should_open_short
 from .....strategy.risk.sl_tp import compute_long_stop, compute_long_target, compute_short_stop, compute_short_target
@@ -10,6 +11,7 @@ from ...config import LiveConfig
 from ..position_manager import PositionManager
 from ..session_state import RunnerSessionState
 from ...order_manager.order_manager import OrderManager
+from ...stats_logger import SignalLogger
 from .pending_execution_service import PendingExecutionService
 
 
@@ -19,6 +21,7 @@ class EntryService:
     def __init__(self, cfg: LiveConfig, logger: LiveLogger) -> None:
         self.cfg = cfg
         self.logger = logger
+        self.signal_logger = SignalLogger(cfg)
 
     def attach_stops_for_pending_fill(
         self,
@@ -111,6 +114,7 @@ class EntryService:
         if not open_long and not open_short:
             return
 
+        trade_id = str(uuid4())
         close_now = float(df["Close"].iloc[-1])
         open_now = float(df["Open"].iloc[-1])
         low_now = float(df["Low"].iloc[-1])
@@ -140,7 +144,28 @@ class EntryService:
             if qty <= 0:
                 self.logger.log("Order size zero or below min notional; skipping long entry.")
                 return
-            entry_order_id = orders.place_entry("Buy", qty, close_now)
+            self.signal_logger.log_entry_signal(trade_id, {
+                "symbol": self.cfg.symbol,
+                "signal_type": "long",
+                "bar_open": open_now,
+                "bar_high": high_now,
+                "bar_low": low_now,
+                "bar_close": close_now,
+                "bar_volume": float(df["Volume"].iloc[-1]),
+                "bar_atr": signals.atr_value,
+                "price_above_ma": signals.price_above_ma,
+                "long_conditions_met": signals.long_conditions_met,
+                "bearish_pb": signals.bearish_pb,
+                "long_entry_pattern": signals.long_entry_pattern,
+                "intended_entry_price": close_now,
+                "intended_qty": float(qty),
+                "order_type": self.cfg.order_type,
+                "stop_price": stop_price,
+                "target_price": target_price,
+                "risk_distance": abs(close_now - stop_price),
+                "auto_leverage_by_stop": self.cfg.auto_leverage_by_stop,
+            })
+            entry_order_id = orders.place_entry("Buy", qty, close_now, order_link_id=trade_id)
         else:
             stop_price = compute_short_stop(
                 sl_reference=self.cfg.sl_reference,
@@ -163,10 +188,33 @@ class EntryService:
             if qty <= 0:
                 self.logger.log("Order size zero or below min notional; skipping short entry.")
                 return
-            entry_order_id = orders.place_entry("Sell", qty, close_now)
+            self.signal_logger.log_entry_signal(trade_id, {
+                "symbol": self.cfg.symbol,
+                "signal_type": "short",
+                "bar_open": open_now,
+                "bar_high": high_now,
+                "bar_low": low_now,
+                "bar_close": close_now,
+                "bar_volume": float(df["Volume"].iloc[-1]),
+                "bar_atr": signals.atr_value,
+                "price_above_ma": signals.price_above_ma,
+                "short_conditions_met": signals.short_conditions_met,
+                "bullish_pb": signals.bullish_pb,
+                "short_entry_pattern": signals.short_entry_pattern,
+                "intended_entry_price": close_now,
+                "intended_qty": float(qty),
+                "order_type": self.cfg.order_type,
+                "stop_price": stop_price,
+                "target_price": target_price,
+                "risk_distance": abs(close_now - stop_price),
+                "auto_leverage_by_stop": self.cfg.auto_leverage_by_stop,
+            })
+            entry_order_id = orders.place_entry("Sell", qty, close_now, order_link_id=trade_id)
 
         if not entry_order_id:
             return
+
+        self.signal_logger.save_entry_order_id(trade_id, entry_order_id)
 
         if self.cfg.order_type == "Limit":
             state.set_pending_entry(

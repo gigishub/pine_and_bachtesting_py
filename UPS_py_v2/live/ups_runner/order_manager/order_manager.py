@@ -141,7 +141,7 @@ class OrderManager:
             return Decimal("0")
         return qty
 
-    def place_entry(self, side: str, qty: Decimal, ref_price: float) -> str | None:
+    def place_entry(self, side: str, qty: Decimal, ref_price: float, order_link_id: str | None = None) -> str | None:
         """Place an entry order using configured order type.
 
         Returns order ID when accepted by exchange (or a dry-run placeholder),
@@ -156,6 +156,8 @@ class OrderManager:
             "qty": fmt_decimal(qty),
             "positionIdx": self.cfg.position_idx,
         }
+        if order_link_id:
+            payload["orderLinkId"] = order_link_id
         if order_type == "Limit":
             payload["price"] = str(ref_price)
             payload["timeInForce"] = "GTC"

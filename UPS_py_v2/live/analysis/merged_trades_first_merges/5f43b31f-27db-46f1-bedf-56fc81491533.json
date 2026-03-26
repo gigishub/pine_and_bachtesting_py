@@ -1,0 +1,60 @@
+{
+  "trade_id": "5f43b31f-27db-46f1-bedf-56fc81491533",
+  "order_link_id": "5f43b31f-27db-46f1-bedf-56fc81491533",
+  "symbol": "ETHUSDT",
+  "signal_type": "short",
+  "lifecycle_status": "signal_logged_no_entry_order",
+  "source": {
+    "trade_log_path": "trade_logs/5f43b31f-27db-46f1-bedf-56fc81491533.json"
+  },
+  "signal": {
+    "trade_id": "5f43b31f-27db-46f1-bedf-56fc81491533",
+    "logged_at_utc": "2026-03-26T18:47:02.115526+00:00",
+    "entry_order_id": null,
+    "symbol": "ETHUSDT",
+    "signal_type": "short",
+    "bar_open": 2041.16,
+    "bar_high": 2042.69,
+    "bar_low": 2041.07,
+    "bar_close": 2041.13,
+    "bar_volume": 1126.78,
+    "bar_atr": 2.137183369397748,
+    "price_above_ma": false,
+    "short_conditions_met": true,
+    "bullish_pb": true,
+    "short_entry_pattern": true,
+    "intended_entry_price": 2041.13,
+    "intended_qty": 0.03,
+    "order_type": "Limit",
+    "stop_price": 2044.8271833693977,
+    "target_price": 2037.4328166306025,
+    "risk_distance": 3.697183369397635,
+    "auto_leverage_by_stop": true
+  },
+  "summary": {
+    "entry_order_id": null,
+    "entry_status": null,
+    "entry_created_time_utc": null,
+    "entry_filled_time_utc": null,
+    "entry_avg_price": null,
+    "entry_filled_qty": null,
+    "entry_exec_fee_total": 0,
+    "entry_fee_currencies": [],
+    "exit_order_id": null,
+    "exit_time_utc": null,
+    "avg_exit_price": null,
+    "closed_pnl": null,
+    "open_fee": null,
+    "close_fee": null,
+    "closed_size": null,
+    "leverage": null
+  },
+  "matching": null,
+  "bybit": {
+    "entry_order": null,
+    "entry_executions": [],
+    "exit_order": null,
+    "exit_executions": [],
+    "closed_pnl": null
+  }
+}
