@@ -1,0 +1,32 @@
+{
+  "trade_id": "d596a62e-7d5d-4fb8-bb11-a3fe7a5773b4",
+  "logged_at_utc": "2026-03-27T03:20:01.916269+00:00",
+  "entry_order_id": "aa29a20b-b06a-45c7-92e5-03edd59fafd1",
+  "analysis_context": {
+    "profile": "default",
+    "symbol": "LTCUSDT",
+    "timeframe": "5m",
+    "category": "linear",
+    "config_fingerprint": "ee0d100056",
+    "run_dir": "UPS_py_v2/live/analysis/runs/default/ltcusdt/5m/linear__cfg_ee0d100056"
+  },
+  "symbol": "LTCUSDT",
+  "signal_type": "long",
+  "bar_open": 54.78,
+  "bar_high": 54.87,
+  "bar_low": 54.78,
+  "bar_close": 54.87,
+  "bar_volume": 393.1,
+  "bar_atr": 0.06557013117218764,
+  "price_above_ma": true,
+  "long_conditions_met": true,
+  "bearish_pb": true,
+  "long_entry_pattern": true,
+  "intended_entry_price": 54.87,
+  "intended_qty": 0.6,
+  "order_type": "Limit",
+  "stop_price": 54.69442986882781,
+  "target_price": 55.045570131172184,
+  "risk_distance": 0.17557013117218645,
+  "auto_leverage_by_stop": true
+}

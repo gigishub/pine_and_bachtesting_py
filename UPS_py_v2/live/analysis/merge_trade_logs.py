@@ -110,12 +110,14 @@ def summarize_entry_order(order: dict[str, Any] | None, entry_execs: list[dict[s
     }
 
 
-def _expected_side(log: dict[str, Any]) -> str | None:
+def _expected_close_side(log: dict[str, Any]) -> str | None:
     signal_type = str(log.get("signal_type") or "").lower()
     if signal_type == "long":
-        return "Buy"
-    if signal_type == "short":
+        # Closing a long requires a Sell.
         return "Sell"
+    if signal_type == "short":
+        # Closing a short requires a Buy.
+        return "Buy"
     return None
 
 
@@ -131,7 +133,7 @@ def match_closed_record(
     if order is None and not entry_execs:
         return None, None
 
-    expected_side = _expected_side(log)
+    expected_side = _expected_close_side(log)
     if expected_side is None:
         return None, None
 
@@ -171,6 +173,10 @@ def match_closed_record(
         created_ms = parse_int(record.get("createdTime"))
         closed_size = parse_float(record.get("closedSize"))
         avg_entry_price = parse_float(record.get("avgEntryPrice"))
+
+        # A close record cannot happen before the reference entry time.
+        if created_ms is not None and reference_time_ms is not None and created_ms < reference_time_ms:
+            continue
 
         time_diff_ms = abs((created_ms or reference_time_ms or 0) - (reference_time_ms or 0))
         qty_rel_diff = abs((closed_size or 0.0) - (reference_qty or 0.0)) / max(abs(reference_qty or 0.0), 1e-9)

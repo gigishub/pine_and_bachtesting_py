@@ -108,6 +108,29 @@ class OrderManager:
                 )
         return None
 
+    def get_order_history(self, order_id: str) -> list[dict[str, Any]]:
+        """Return order history entries for a specific orderId."""
+        if self.cfg.dry_run:
+            return []
+
+        return self.client.get_order_history(
+            category=self.cfg.category,
+            symbol=self.cfg.symbol,
+            orderId=order_id,
+            limit=10,
+        )
+
+    def get_order_status(self, order_id: str) -> str:
+        """Return a normalized order status string from bybit order history."""
+        items = self.get_order_history(order_id)
+        if not items:
+            return "not_found"
+
+        status = str(items[0].get("orderStatus", "unknown"))
+        if status not in {"Filled", "Cancelled", "Rejected", "New", "PartiallyFilled"}:
+            return "unknown"
+        return status
+
     def compute_qty(self, entry: float, stop: float) -> Decimal:
         """Compute order quantity using fixed size or risk-based sizing."""
         if self.cfg.fixed_order_qty > 0:

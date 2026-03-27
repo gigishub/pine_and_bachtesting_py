@@ -161,11 +161,78 @@ class BybitV5Client:
         )
         return data.get("result", {}).get("list", [])
 
+    def get_order_history(
+        self,
+        *,
+        category: str,
+        symbol: str,
+        orderId: str | None = None,
+        orderLinkId: str | None = None,
+        startTime: int | None = None,
+        endTime: int | None = None,
+        limit: int = 20,
+        cursor: str | None = None,
+    ) -> list[dict[str, Any]]:
+        params: dict[str, Any] = {
+            "category": category,
+            "symbol": symbol,
+            "limit": limit,
+        }
+        if orderId:
+            params["orderId"] = orderId
+        if orderLinkId:
+            params["orderLinkId"] = orderLinkId
+        if startTime is not None:
+            params["startTime"] = startTime
+        if endTime is not None:
+            params["endTime"] = endTime
+        if cursor is not None:
+            params["cursor"] = cursor
+
+        data = self._request(
+            "GET",
+            "/v5/order/history",
+            params=params,
+            auth=True,
+        )
+        return data.get("result", {}).get("list", [])
+
     def get_position(self, *, category: str, symbol: str) -> list[dict[str, Any]]:
         data = self._request(
             "GET",
             "/v5/position/list",
             params={"category": category, "symbol": symbol},
+            auth=True,
+        )
+        return data.get("result", {}).get("list", [])
+
+    def get_closed_pnl(
+        self,
+        *,
+        category: str,
+        symbol: str | None = None,
+        startTime: int | None = None,
+        endTime: int | None = None,
+        limit: int = 50,
+        cursor: str | None = None,
+    ) -> list[dict[str, Any]]:
+        params: dict[str, Any] = {
+            "category": category,
+            "limit": limit,
+        }
+        if symbol:
+            params["symbol"] = symbol
+        if startTime is not None:
+            params["startTime"] = startTime
+        if endTime is not None:
+            params["endTime"] = endTime
+        if cursor is not None:
+            params["cursor"] = cursor
+
+        data = self._request(
+            "GET",
+            "/v5/position/closed-pnl",
+            params=params,
             auth=True,
         )
         return data.get("result", {}).get("list", [])
