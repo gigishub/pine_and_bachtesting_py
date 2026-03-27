@@ -1,0 +1,7 @@
+backtesting
+pandas
+numpy
+python-dotenv
+requests
+websocket-client
+pytest
