@@ -17,7 +17,8 @@ Local copies of framework docs are saved in `docs/`. Always check them before an
 - Always add or update pytest coverage for nontrivial behavior (`tests/test_*.py`).
 
 ## Documentation references
-- Full coding conventions in `/Users/andre/Documents/Python_local/pine_script/building_instructions/building_instructions_general.md`
+- Full coding conventions in `instructions/building_instructions_general.md`
+- Git workflow checklist in `instructions/git-workflow-best-practices.md` (core process for Copilot and developer use)
 
 
 ## Python Agent Rules
