@@ -1,0 +1,6 @@
+# Desired runs that should auto-resurrect on reboot.
+# You can use plain lines or YAML-list style.
+# Example:
+# - coti_5m
+# - btc_15m
+- WOO_5m

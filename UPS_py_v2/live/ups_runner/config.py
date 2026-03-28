@@ -154,6 +154,14 @@ def _env_bool(name: str, default: bool) -> bool:
     return raw.strip().lower() in {"1", "true", "yes", "y", "on"}
 
 
+def _env_str(name: str, default: str) -> str:
+    raw = os.getenv(name)
+    if raw is None:
+        return default
+    value = raw.strip()
+    return value if value else default
+
+
 def _normalize_order_type(raw: str | None) -> str:
     value = (raw or "Market").strip().lower()
     if value in {"market", "m"}:
@@ -188,9 +196,17 @@ def build_config_from_env() -> LiveConfig:
     if not api_key or not api_secret:
         raise RuntimeError("Set BYBIT_API_KEY and BYBIT_API_SECRET")
 
-    # Keep strategy/execution settings in code config; only secrets come from env/.env.
+    # Secrets come from env/.env and selected run parameters can be overridden
+    # per-run via exported UPS_* variables (used by live/control profiles).
     cfg = LiveConfig(api_key=api_key, api_secret=api_secret)
-    cfg.order_type = _normalize_order_type(cfg.order_type)
+    cfg.profile = _env_str("UPS_PROFILE", cfg.profile)
+    cfg.category = _env_str("UPS_CATEGORY", cfg.category)
+    cfg.symbol = _env_str("UPS_SYMBOL", cfg.symbol).upper()
+    cfg.timeframe = _env_str("UPS_TIMEFRAME", cfg.timeframe)
+    cfg.trail_stop = _env_bool("UPS_TRAIL_STOP", cfg.trail_stop)
+    cfg.use_ws_kline = _env_bool("UPS_USE_WS_KLINE", cfg.use_ws_kline)
+    cfg.dry_run = _env_bool("UPS_DRY_RUN", cfg.dry_run)
+    cfg.order_type = _normalize_order_type(os.getenv("UPS_ORDER_TYPE", cfg.order_type))
 
     return cfg
  
