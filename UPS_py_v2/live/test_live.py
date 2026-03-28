@@ -224,6 +224,59 @@ class TestOrderManager(unittest.TestCase):
         om.update_stops(stop_loss=49000.0, take_profit=52000.0, position_size=0.01, position_side="Buy")
         client.set_trading_stop.assert_called_once()
 
+    def test_update_stops_trailing_clears_tp_and_cancels_open_tp_orders(self):
+        om, client = self._make(dry_run=False, category="linear", trail_stop=True)
+        client.get_open_orders.return_value = [
+            {
+                "orderId": "tp-1",
+                "side": "Sell",
+                "reduceOnly": True,
+                "stopOrderType": "PartialTakeProfit",
+                "createType": "CreateByPartialTakeProfit",
+            },
+            {
+                "orderId": "other-1",
+                "side": "Sell",
+                "reduceOnly": True,
+                "stopOrderType": "StopLoss",
+                "createType": "CreateByStopLoss",
+            },
+        ]
+        client.set_trading_stop.return_value = {"retCode": 0}
+
+        ok = om.update_stops(stop_loss=49000.0, take_profit=None, position_size=0.01, position_side="Buy")
+
+        self.assertTrue(ok)
+        client.get_open_orders.assert_called_once_with(category="linear", symbol="COTIUSDT", open_only=0)
+        client.cancel_order.assert_called_once()
+        cancel_payload = client.cancel_order.call_args[0][0]
+        self.assertEqual(cancel_payload["orderId"], "tp-1")
+
+        self.assertEqual(client.set_trading_stop.call_count, 1)
+        payload = client.set_trading_stop.call_args[0][0]
+        self.assertEqual(payload["tpslMode"], "Full")
+        self.assertEqual(payload["takeProfit"], "0")
+        self.assertEqual(payload["stopLoss"], "49000.0")
+
+    def test_update_stops_trailing_cancel_nonfatal_error_continues(self):
+        om, client = self._make(dry_run=False, category="linear", trail_stop=True)
+        client.get_open_orders.return_value = [
+            {
+                "orderId": "tp-2",
+                "side": "Buy",
+                "reduceOnly": True,
+                "stopOrderType": "PartialTakeProfit",
+                "createType": "CreateByPartialTakeProfit",
+            },
+        ]
+        client.cancel_order.side_effect = RuntimeError("Bybit error 110001: order not exists")
+        client.set_trading_stop.return_value = {"retCode": 0}
+
+        ok = om.update_stops(stop_loss=51000.0, take_profit=None, position_size=0.01, position_side="Sell")
+
+        self.assertTrue(ok)
+        self.assertEqual(client.set_trading_stop.call_count, 1)
+
     def test_update_stops_partial_tpsl_10001_fallbacks_full(self):
         om, client = self._make(dry_run=False, category="linear", tp_as_limit=True, sl_as_market=True)
         # first attempt fails with invalid param (10001), fallback should attempt full mode and succeed

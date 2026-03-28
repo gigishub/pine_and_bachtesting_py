@@ -13,6 +13,7 @@ class TradingStopPlan:
     """Prepared TP/SL payloads for primary, fallback, and emergency attempts."""
 
     use_partial_tp_limit: bool
+    clear_take_profit: bool
     payload: dict[str, Any]
     full_payload: dict[str, Any]
     sl_only_payload: dict[str, Any] | None
@@ -33,8 +34,9 @@ def _build_single_side_stop_payload(
     *,
     stop_loss: float | None = None,
     take_profit: float | None = None,
+    clear_take_profit: bool = False,
 ) -> dict[str, Any] | None:
-    if stop_loss is None and take_profit is None:
+    if stop_loss is None and take_profit is None and not clear_take_profit:
         return None
 
     payload: dict[str, Any] = {
@@ -46,6 +48,9 @@ def _build_single_side_stop_payload(
     if stop_loss is not None:
         payload["stopLoss"] = str(stop_loss)
         payload["slTriggerBy"] = "MarkPrice"
+    if clear_take_profit:
+        # Bybit uses takeProfit="0" to clear previously attached TP state.
+        payload["takeProfit"] = "0"
     if take_profit is not None:
         payload["takeProfit"] = str(take_profit)
         payload["tpTriggerBy"] = "MarkPrice"
@@ -62,6 +67,8 @@ def build_trading_stop_plan(
     position_side: str,
 ) -> TradingStopPlan:
     """Create all TP/SL request payloads needed by live stop update flow."""
+    clear_take_profit = cfg.trail_stop and take_profit is None
+
     use_partial_tp_limit = (
         cfg.tp_as_limit
         and cfg.sl_as_market
@@ -90,6 +97,8 @@ def build_trading_stop_plan(
     if stop_loss is not None:
         payload["stopLoss"] = str(stop_loss)
         payload["slTriggerBy"] = "MarkPrice"
+    if clear_take_profit:
+        payload["takeProfit"] = "0"
     if take_profit is not None:
         payload["takeProfit"] = str(take_profit)
         payload["tpTriggerBy"] = "MarkPrice"
@@ -100,10 +109,15 @@ def build_trading_stop_plan(
         full_payload.pop(key, None)
 
     sl_only_payload = _build_single_side_stop_payload(cfg, stop_loss=stop_loss)
-    tp_only_payload = _build_single_side_stop_payload(cfg, take_profit=take_profit)
+    tp_only_payload = _build_single_side_stop_payload(
+        cfg,
+        take_profit=take_profit,
+        clear_take_profit=clear_take_profit,
+    )
 
     return TradingStopPlan(
         use_partial_tp_limit=use_partial_tp_limit,
+        clear_take_profit=clear_take_profit,
         payload=payload,
         full_payload=full_payload,
         sl_only_payload=sl_only_payload,

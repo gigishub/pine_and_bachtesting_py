@@ -18,10 +18,13 @@ class LiveConfig:
 
     # Market selection
     category: str = "linear"  # derivative category: linear/inverse/spot
-    symbol: str = "AVAXUSDT"  # trading pair
+    symbol: str = "ATOMUSDT"  # trading pair
+    trail_stop: bool = False 
+
 
     # Data timing
-    timeframe: str = "5m"  # kline timeframe
+    timeframe: str = "15m"  # kline timeframe
+
     warmup_bars: int = 400  # historical bars needed before live signal execution
     poll_ahead_ms: int = 200  # REST polling lead-in to avoid late bar effects
 
@@ -65,7 +68,7 @@ class LiveConfig:
     minimum_rr: float = 0.0
     pb_reference: str = "Close"
     sl_reference: str = "High/Low"
-    trail_stop: bool = False
+    # trail_stop: bool = False
     trail_stop_size: float = 1.0
     trail_source: str = "High/Low"
     lookback: int = 5
