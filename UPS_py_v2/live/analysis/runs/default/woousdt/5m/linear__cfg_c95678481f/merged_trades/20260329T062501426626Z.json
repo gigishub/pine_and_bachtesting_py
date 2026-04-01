@@ -1,0 +1,68 @@
+{
+  "trade_id": "28703ae4-384c-4042-8b88-280700a703b1",
+  "order_link_id": "28703ae4-384c-4042-8b88-280700a703b1",
+  "symbol": "WOOUSDT",
+  "signal_type": "short",
+  "lifecycle_status": "entry_order_not_found_in_history",
+  "source": {
+    "trade_log_path": "UPS_py_v2/live/analysis/runs/default/woousdt/5m/linear__cfg_c95678481f/trade_logs/20260329T062501426626Z.json"
+  },
+  "signal": {
+    "trade_id": "28703ae4-384c-4042-8b88-280700a703b1",
+    "logged_at_utc": "2026-03-29T06:25:01.426626+00:00",
+    "entry_order_id": "f418e8a0-5992-4668-bd51-3d6deacfcb63",
+    "analysis_context": {
+      "profile": "default",
+      "symbol": "WOOUSDT",
+      "timeframe": "5m",
+      "category": "linear",
+      "config_fingerprint": "c95678481f",
+      "run_dir": "UPS_py_v2/live/analysis/runs/default/woousdt/5m/linear__cfg_c95678481f"
+    },
+    "symbol": "WOOUSDT",
+    "signal_type": "short",
+    "bar_open": 0.016019,
+    "bar_high": 0.016019,
+    "bar_low": 0.016009,
+    "bar_close": 0.016009,
+    "bar_volume": 10000.0,
+    "bar_atr": 2.0598918881533388e-05,
+    "price_above_ma": false,
+    "short_conditions_met": true,
+    "bullish_pb": true,
+    "short_entry_pattern": true,
+    "intended_entry_price": 0.016009,
+    "intended_qty": 3481.2,
+    "order_type": "Limit",
+    "stop_price": 0.016039598918881532,
+    "target_price": 0.015978401081118466,
+    "risk_distance": 3.05989188815331e-05,
+    "auto_leverage_by_stop": true
+  },
+  "summary": {
+    "entry_order_id": "f418e8a0-5992-4668-bd51-3d6deacfcb63",
+    "entry_status": null,
+    "entry_created_time_utc": null,
+    "entry_filled_time_utc": null,
+    "entry_avg_price": null,
+    "entry_filled_qty": null,
+    "entry_exec_fee_total": 0,
+    "entry_fee_currencies": [],
+    "exit_order_id": null,
+    "exit_time_utc": null,
+    "avg_exit_price": null,
+    "closed_pnl": null,
+    "open_fee": null,
+    "close_fee": null,
+    "closed_size": null,
+    "leverage": null
+  },
+  "matching": null,
+  "bybit": {
+    "entry_order": null,
+    "entry_executions": [],
+    "exit_order": null,
+    "exit_executions": [],
+    "closed_pnl": null
+  }
+}

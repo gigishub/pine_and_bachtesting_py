@@ -81,7 +81,7 @@ class LiveConfig:
     leverage: float = 0.0            # fixed leverage fallback when auto is off
     auto_leverage_by_stop: bool = True       # toggle auto leverage on/off
     auto_leverage_min: float = 1.0           # lower bound for auto leverage
-    auto_leverage_max: float = 10           # upper bound for auto leverage
+    auto_leverage_max: float = 20           # upper bound for auto leverage
     auto_leverage_sl_buffer_pct: float = 5.0 # liquidation buffer in %
     leverage_fail_soft: bool = True          # continue if leverage update fails
 

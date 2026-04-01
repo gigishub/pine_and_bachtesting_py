@@ -15,6 +15,21 @@ chmod +x runctl.sh
 
 ### Example: create one saved profile
 
+In VS Code, open the folder UPS_py_v2/live/control/profiles/_template.env, then create a new file next to it named coti_5m.env inside UPS_py_v2/live/control/profiles/.
+
+inside put:
+
+UPS_PROFILE=default
+UPS_CATEGORY=linear
+UPS_SYMBOL=COTIUSDT
+UPS_TIMEFRAME=5m
+UPS_TRAIL_STOP=false
+UPS_DRY_RUN=false
+UPS_USE_WS_KLINE=true
+UPS_ORDER_TYPE=Limit
+
+That is the manual equivalent of the following
+
 This saves a reusable setup for `COTIUSDT` on `5m`.
 
 ```bash
@@ -65,6 +80,18 @@ cat registry/manifests/last_snapshot.txt
 ./runctl.sh stop coti_5m
 ```
 
+### Example: stop all configured runs
+
+```bash
+./runctl.sh stop-all
+```
+
+### Example: start all profiles
+
+```bash
+./runctl.sh start-all
+```
+
 What happens when you stop:
 
 - The supervisor process is terminated.
@@ -79,6 +106,17 @@ What happens when you stop:
 ```
 
 Use `--disable` when you do not want this run resurrected from `wanted_runs.yaml` anymore.
+
+### Optional: install systemd auto-resurrection
+
+If you want this controller to continue auto-restarting runs after machine reboot, install the systemd service:
+
+```bash
+sudo ./runctl.sh install-systemd
+systemctl status ups-live-control.service
+```
+
+This writes `/etc/systemd/system/ups-live-control.service` and enables it on boot.
 
 ## Daily Use
 

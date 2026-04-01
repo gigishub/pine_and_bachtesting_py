@@ -1,0 +1,32 @@
+{
+  "trade_id": "38b25994-aabb-45de-a005-6e7366043b49",
+  "logged_at_utc": "2026-03-30T15:30:02.100390+00:00",
+  "entry_order_id": "49677853-d5d1-4eda-acb1-f945d70e825c",
+  "analysis_context": {
+    "profile": "trail_stop_active",
+    "symbol": "TRXUSDT",
+    "timeframe": "5m",
+    "category": "linear",
+    "config_fingerprint": "a7fb714990",
+    "run_dir": "UPS_py_v2/live/analysis/runs/trail_stop_active/trxusdt/5m/linear__cfg_a7fb714990"
+  },
+  "symbol": "TRXUSDT",
+  "signal_type": "short",
+  "bar_open": 0.3181,
+  "bar_high": 0.31823,
+  "bar_low": 0.318,
+  "bar_close": 0.31803,
+  "bar_volume": 302472.0,
+  "bar_atr": 0.0005252664269040353,
+  "price_above_ma": false,
+  "short_conditions_met": true,
+  "bullish_pb": true,
+  "short_entry_pattern": true,
+  "intended_entry_price": 0.31803,
+  "intended_qty": 147.0,
+  "order_type": "Limit",
+  "stop_price": 0.31875526642690405,
+  "target_price": 0.3173047335730959,
+  "risk_distance": 0.0007252664269040698,
+  "auto_leverage_by_stop": true
+}

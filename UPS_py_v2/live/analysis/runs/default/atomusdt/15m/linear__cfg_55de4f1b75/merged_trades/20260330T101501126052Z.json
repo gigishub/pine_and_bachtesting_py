@@ -1,0 +1,68 @@
+{
+  "trade_id": "711a53de-bd5d-4af3-8c2f-17a774dabd7b",
+  "order_link_id": "711a53de-bd5d-4af3-8c2f-17a774dabd7b",
+  "symbol": "ATOMUSDT",
+  "signal_type": "long",
+  "lifecycle_status": "entry_order_not_found_in_history",
+  "source": {
+    "trade_log_path": "UPS_py_v2/live/analysis/runs/default/atomusdt/15m/linear__cfg_55de4f1b75/trade_logs/20260330T101501126052Z.json"
+  },
+  "signal": {
+    "trade_id": "711a53de-bd5d-4af3-8c2f-17a774dabd7b",
+    "logged_at_utc": "2026-03-30T10:15:01.126052+00:00",
+    "entry_order_id": "8cf73303-d613-4b79-b6fd-d1d8d8f17cad",
+    "analysis_context": {
+      "profile": "default",
+      "symbol": "ATOMUSDT",
+      "timeframe": "15m",
+      "category": "linear",
+      "config_fingerprint": "55de4f1b75",
+      "run_dir": "UPS_py_v2/live/analysis/runs/default/atomusdt/15m/linear__cfg_55de4f1b75"
+    },
+    "symbol": "ATOMUSDT",
+    "signal_type": "long",
+    "bar_open": 1.6742,
+    "bar_high": 1.6839,
+    "bar_low": 1.6727,
+    "bar_close": 1.6832,
+    "bar_volume": 59350.8,
+    "bar_atr": 0.0059328570571991505,
+    "price_above_ma": true,
+    "long_conditions_met": true,
+    "bearish_pb": true,
+    "long_entry_pattern": true,
+    "intended_entry_price": 1.6832,
+    "intended_qty": 6.4,
+    "order_type": "Limit",
+    "stop_price": 1.6667671429428008,
+    "target_price": 1.6996328570571992,
+    "risk_distance": 0.016432857057199213,
+    "auto_leverage_by_stop": true
+  },
+  "summary": {
+    "entry_order_id": "8cf73303-d613-4b79-b6fd-d1d8d8f17cad",
+    "entry_status": null,
+    "entry_created_time_utc": null,
+    "entry_filled_time_utc": null,
+    "entry_avg_price": null,
+    "entry_filled_qty": null,
+    "entry_exec_fee_total": 0,
+    "entry_fee_currencies": [],
+    "exit_order_id": null,
+    "exit_time_utc": null,
+    "avg_exit_price": null,
+    "closed_pnl": null,
+    "open_fee": null,
+    "close_fee": null,
+    "closed_size": null,
+    "leverage": null
+  },
+  "matching": null,
+  "bybit": {
+    "entry_order": null,
+    "entry_executions": [],
+    "exit_order": null,
+    "exit_executions": [],
+    "closed_pnl": null
+  }
+}

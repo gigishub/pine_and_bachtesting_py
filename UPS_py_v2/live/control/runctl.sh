@@ -36,6 +36,8 @@ Usage:
   runctl.sh profile-show <profile_name>
   runctl.sh profile-list
   runctl.sh stop <run_name> [--disable]
+  runctl.sh stop-all
+  runctl.sh start-all
   runctl.sh restart <run_name>
   runctl.sh status
   runctl.sh list
@@ -557,6 +559,40 @@ cmd_resurrect() {
   status_table > /dev/null
 }
 
+cmd_stop_all() {
+  local lines
+  lines=$(cmd_profile_list)
+  if [[ -z "$lines" ]]; then
+    echo "No configured runs to stop."
+    return
+  fi
+
+  local run
+  for run in $lines; do
+    echo "Stopping run: $run"
+    stop_run "$run" "yes"
+  done
+
+  status_table > /dev/null
+}
+
+cmd_start_all() {
+  local lines
+  lines=$(cmd_profile_list)
+  if [[ -z "$lines" ]]; then
+    echo "No configured profiles to start."
+    return
+  fi
+
+  local run
+  for run in $lines; do
+    echo "Starting run: $run"
+    cmd_profile_start "$run"
+  done
+
+  status_table > /dev/null
+}
+
 cmd_install_systemd() {
   local service_name="ups-live-control.service"
   local service_path="/etc/systemd/system/${service_name}"
@@ -660,6 +696,12 @@ main() {
       ;;
     list)
       wanted_runs_list
+      ;;
+    stop-all)
+      cmd_stop_all
+      ;;
+    start-all)
+      cmd_start_all
       ;;
     resurrect)
       cmd_resurrect
