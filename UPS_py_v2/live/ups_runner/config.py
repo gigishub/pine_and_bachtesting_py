@@ -97,9 +97,9 @@ class LiveConfig:
     dry_run: bool = False  # dry-run mode: compute signals and log orders without executing on exchange
 
     # Sizing controls
-    risk_per_trade_pct: float = 0.5 # risk percent of wallet (only if fixed_order_qty==0)
+    risk_per_trade_pct: float = 0.3 # risk percent of wallet (only if fixed_order_qty==0)
     fixed_order_qty: float = 0.0    # override to fixed size when > 0
-    min_notional_usdt: float = 5.0  # avoid orders below exchange minimum
+    min_notional_usdt: float = 1.0  # avoid orders below exchange minimum
 
 
 

@@ -1,15 +1,17 @@
 Runtime Status
-Generated: 2026-04-01 13:45:30 UTC
+Generated: 2026-04-02 10:38:04 UTC
 
 RUN_NAME                  STATE      SUPERVISOR   CHILD      LAST_FINISHED         
 --------                  -----      ----------   -----      -------------         
-ATOM_15m                  stopped    -            -          -                     
-AVAX_5m                   stopped    -            -          -                     
-BTC_15m                   stopped    -            -          -                     
-COTI_5m                   stopped    -            -          -                     
-_template                 stopped    -            -          -                     
-TRX_5m                    stopped    -            -          -                     
-WOO_5m                    stopped    -            -          -                     
+ATOM_15m                  running    96548        96563      -                     
+AVAX_5m                   running    96592        96607      -                     
+COTI_5m                   running    96637        96652      -                     
+TRX_5m                    running    96684        96699      -                     
+WOO_5m                    running    96732        96747      -                     
 
 Wanted on reboot:
-- (none)
+- ATOM_15m
+- AVAX_5m
+- COTI_5m
+- TRX_5m
+- WOO_5m

@@ -1,5 +1,10 @@
-# Desired runs that should auto-resurrect on reboot.
-# You can use plain lines or YAML-list style.
+# Desired runs that should be resurrected on reboot.
+# One run name per line, either plain or YAML-list style.
 # Example:
 # - coti_5m
 # - btc_15m
+- ATOM_15m
+- AVAX_5m
+- COTI_5m
+- TRX_5m
+- WOO_5m
