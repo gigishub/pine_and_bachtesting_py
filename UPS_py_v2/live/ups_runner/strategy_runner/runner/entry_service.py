@@ -32,24 +32,13 @@ class EntryService:
         pending_execution: PendingExecutionService,
         orders: OrderManager,
     ) -> None:
-        """When a previously pending limit entry fills, attach exits immediately."""
-        if state.pending_entry_stop_price is None or state.pending_entry_target_price is None:
-            self.logger.log("Pending entry filled but stop/target context missing; using position manager recovery path.")
-            state.clear_pending_entry()
-            return
+        """When pending limit entry fills, clear pending state.
 
-        stop_price = state.pending_entry_stop_price
-        target_price = state.pending_entry_target_price
-        position_manager.on_entry(stop_price, target_price)
-        take_profit = None if self.cfg.trail_stop else target_price
-        pending_execution.apply_or_queue_stops(
-            stop_loss=stop_price,
-            take_profit=take_profit,
-            position=position,
-            state=state,
-            orders=orders,
-        )
-        self.logger.log("Pending limit entry filled; attached TP/SL immediately.")
+        Initial protection is attached on the parent entry order at create time.
+        """
+        if state.pending_entry_stop_price is not None and state.pending_entry_target_price is not None:
+            position_manager.on_entry(state.pending_entry_stop_price, state.pending_entry_target_price)
+        self.logger.log("Pending limit entry filled; protection was attached on entry order.")
         state.clear_pending_entry()
 
     def attach_stops_for_pending_fill_if_needed(
@@ -165,7 +154,14 @@ class EntryService:
                 "risk_distance": abs(close_now - stop_price),
                 "auto_leverage_by_stop": self.cfg.auto_leverage_by_stop,
             })
-            entry_order_id = orders.place_entry("Buy", qty, close_now, order_link_id=trade_id)
+            entry_order_id = orders.place_entry(
+                "Buy",
+                qty,
+                close_now,
+                stop_loss=stop_price,
+                take_profit=(None if self.cfg.trail_stop else target_price),
+                order_link_id=trade_id,
+            )
         else:
             stop_price = compute_short_stop(
                 sl_reference=self.cfg.sl_reference,
@@ -209,7 +205,14 @@ class EntryService:
                 "risk_distance": abs(close_now - stop_price),
                 "auto_leverage_by_stop": self.cfg.auto_leverage_by_stop,
             })
-            entry_order_id = orders.place_entry("Sell", qty, close_now, order_link_id=trade_id)
+            entry_order_id = orders.place_entry(
+                "Sell",
+                qty,
+                close_now,
+                stop_loss=stop_price,
+                take_profit=(None if self.cfg.trail_stop else target_price),
+                order_link_id=trade_id,
+            )
 
         if not entry_order_id:
             return
@@ -224,35 +227,11 @@ class EntryService:
                 target_price=target_price,
             )
 
-        if not self.cfg.dry_run:
-            live_position = orders.get_current_position()
-            if live_position is None:
-                self.logger.log("Entry order accepted but position is still flat; deferring TP/SL until fill.")
-                return
-            if state.pending_entry_order_id is not None:
-                self.attach_stops_for_pending_fill(
-                    position=live_position,
-                    state=state,
-                    position_manager=position_manager,
-                    pending_execution=pending_execution,
-                    orders=orders,
-                )
-                return
-
         position_manager.on_entry(stop_price, target_price)
-        take_profit = None if self.cfg.trail_stop else target_price
-        if not self.cfg.dry_run:
-            pending_execution.apply_or_queue_stops(
-                stop_loss=stop_price,
-                take_profit=take_profit,
-                position=live_position,
-                state=state,
-                orders=orders,
-            )
-        else:
+        if self.cfg.dry_run:
             orders.update_stops(
                 stop_loss=stop_price,
-                take_profit=take_profit,
+                take_profit=(None if self.cfg.trail_stop else target_price),
                 position_size=float(qty),
                 position_side=("Buy" if open_long else "Sell"),
             )
