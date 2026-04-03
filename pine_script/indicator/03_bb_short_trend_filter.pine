@@ -1,0 +1,20 @@
+//@version=6
+indicator("03 BB Short Trend Filter", overlay=true)
+
+var const string G_MAIN = "Main"
+
+i_BbLength = input.int(20, "Bollinger Length", minval=1, group=G_MAIN)
+i_BbMult   = input.float(2.0, "Bollinger StdDev", minval=0.1, step=0.1, group=G_MAIN)
+
+float bbBasis = ta.sma(close, i_BbLength)
+float bbDev = ta.stdev(close, i_BbLength) * i_BbMult
+float bbLower = bbBasis - bbDev
+float bbUpper = bbBasis + bbDev
+
+bool bbDowntrend = close < bbBasis and bbBasis < bbBasis[1] and close < bbLower
+
+plot(bbBasis, title="BB Basis", color=color.new(color.blue, 0))
+plot(bbLower, title="BB Lower", color=color.new(color.red, 0))
+plot(bbUpper, title="BB Upper", color=color.new(color.green, 0))
+plotchar(bbDowntrend, title="Short Trend Confirmed", char='D', location=location.top, color=color.red, size=size.tiny)
+barcolor(bbDowntrend ? color.new(color.red, 65) : na)

@@ -1,0 +1,36 @@
+//@version=6
+indicator("02 ATR Caution Filter", overlay=true)
+
+var const string G_MAIN = "Main"
+var const string G_VIEW = "View"
+
+i_HigherTimeframe = input.timeframe("W", "Higher Timeframe", group=G_MAIN)
+i_EmaLength       = input.int(20, "EMA Length", minval=1, group=G_MAIN)
+i_AtrLength       = input.int(5, "ATR Length", minval=1, group=G_MAIN)
+i_Lookback        = input.int(7, "Range Lookback", minval=2, group=G_MAIN)
+i_CautionMult     = input.float(1.5, "Caution ATR Multiplier", minval=0.1, step=0.1, group=G_MAIN)
+i_ShowBg          = input.bool(true, "Show Caution Background", group=G_VIEW)
+
+RequestSecurity_NonRP(_market, _res, _exp) =>
+    request.security(_market, _res, _exp[barstate.isrealtime ? 1 : 0])[barstate.isrealtime ? 0 : 1]
+
+float atrValue = ta.atr(i_AtrLength)
+float emaValue = ta.ema(close, i_EmaLength)
+float htfEmaValue = RequestSecurity_NonRP(syminfo.tickerid, i_HigherTimeframe, emaValue)
+
+bool isBullish = close > htfEmaValue
+bool isBearish = close < htfEmaValue
+
+float highestPrice = ta.highest(high, i_Lookback)
+float lowestPrice = ta.lowest(low, i_Lookback)
+
+bool isCautionLong = isBullish and ((highestPrice - low) > (atrValue * i_CautionMult) or close < emaValue)
+bool isCautionShort = isBearish and ((high - lowestPrice) > (atrValue * i_CautionMult) or close > emaValue)
+
+// compute background color at global scope (bgcolor cannot be called inside local scope)
+color bgColCaution = isCautionLong ? color.new(color.orange, 82) : isCautionShort ? color.new(color.maroon, 82) : na
+bgcolor(i_ShowBg ? bgColCaution : na)
+
+plot(emaValue, title="Local EMA", color=color.yellow)
+plotchar(isCautionLong, title="Long Caution", char='L', location=location.top, color=color.orange, size=size.tiny)
+plotchar(isCautionShort, title="Short Caution", char='S', location=location.top, color=color.maroon, size=size.tiny)

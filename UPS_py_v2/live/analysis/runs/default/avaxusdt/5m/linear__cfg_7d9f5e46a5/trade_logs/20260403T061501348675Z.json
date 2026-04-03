@@ -1,0 +1,32 @@
+{
+  "trade_id": "bf917b55-1bdb-4aed-a716-20c8a2046da4",
+  "logged_at_utc": "2026-04-03T06:15:01.348675+00:00",
+  "entry_order_id": "f966e187-3e75-4c42-a0b7-1e36d5767032",
+  "analysis_context": {
+    "profile": "default",
+    "symbol": "AVAXUSDT",
+    "timeframe": "5m",
+    "category": "linear",
+    "config_fingerprint": "7d9f5e46a5",
+    "run_dir": "UPS_py_v2/live/analysis/runs/default/avaxusdt/5m/linear__cfg_7d9f5e46a5"
+  },
+  "symbol": "AVAXUSDT",
+  "signal_type": "long",
+  "bar_open": 8.869,
+  "bar_high": 8.888,
+  "bar_low": 8.868,
+  "bar_close": 8.883,
+  "bar_volume": 8371.8,
+  "bar_atr": 0.022784836052672324,
+  "price_above_ma": true,
+  "long_conditions_met": true,
+  "bearish_pb": true,
+  "long_entry_pattern": true,
+  "intended_entry_price": 8.883,
+  "intended_qty": 1.1,
+  "order_type": "Limit",
+  "stop_price": 8.836215163947328,
+  "target_price": 8.92978483605267,
+  "risk_distance": 0.04678483605267125,
+  "auto_leverage_by_stop": true
+}

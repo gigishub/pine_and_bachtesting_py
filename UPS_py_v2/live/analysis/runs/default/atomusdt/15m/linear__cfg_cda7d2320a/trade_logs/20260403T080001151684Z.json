@@ -1,0 +1,32 @@
+{
+  "trade_id": "625a2344-9a12-448c-af98-b35941a3a7d0",
+  "logged_at_utc": "2026-04-03T08:00:01.151684+00:00",
+  "entry_order_id": "860495a8-01d8-40e2-be34-6ad3b25848a0",
+  "analysis_context": {
+    "profile": "default",
+    "symbol": "ATOMUSDT",
+    "timeframe": "15m",
+    "category": "linear",
+    "config_fingerprint": "cda7d2320a",
+    "run_dir": "UPS_py_v2/live/analysis/runs/default/atomusdt/15m/linear__cfg_cda7d2320a"
+  },
+  "symbol": "ATOMUSDT",
+  "signal_type": "long",
+  "bar_open": 1.7071,
+  "bar_high": 1.7113,
+  "bar_low": 1.7044,
+  "bar_close": 1.7113,
+  "bar_volume": 28141.1,
+  "bar_atr": 0.008536484088588684,
+  "price_above_ma": true,
+  "long_conditions_met": true,
+  "bearish_pb": true,
+  "long_entry_pattern": true,
+  "intended_entry_price": 1.7113,
+  "intended_qty": 3.6,
+  "order_type": "Limit",
+  "stop_price": 1.6958635159114113,
+  "target_price": 1.7267364840885888,
+  "risk_distance": 0.015436484088588776,
+  "auto_leverage_by_stop": true
+}

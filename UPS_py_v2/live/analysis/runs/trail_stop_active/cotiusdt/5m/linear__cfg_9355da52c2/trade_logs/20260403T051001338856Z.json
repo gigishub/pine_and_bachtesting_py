@@ -1,0 +1,32 @@
+{
+  "trade_id": "ef8adc1d-9a8f-477e-854f-2d57074474d0",
+  "logged_at_utc": "2026-04-03T05:10:01.338856+00:00",
+  "entry_order_id": null,
+  "analysis_context": {
+    "profile": "trail_stop_active",
+    "symbol": "COTIUSDT",
+    "timeframe": "5m",
+    "category": "linear",
+    "config_fingerprint": "9355da52c2",
+    "run_dir": "UPS_py_v2/live/analysis/runs/trail_stop_active/cotiusdt/5m/linear__cfg_9355da52c2"
+  },
+  "symbol": "COTIUSDT",
+  "signal_type": "long",
+  "bar_open": 0.013385,
+  "bar_high": 0.013479,
+  "bar_low": 0.013385,
+  "bar_close": 0.013479,
+  "bar_volume": 50086.0,
+  "bar_atr": 4.71109822314876e-05,
+  "price_above_ma": true,
+  "long_conditions_met": true,
+  "bearish_pb": true,
+  "long_entry_pattern": true,
+  "intended_entry_price": 0.013479,
+  "intended_qty": 332.0,
+  "order_type": "Limit",
+  "stop_price": 0.013310889017768512,
+  "target_price": 0.013647110982231488,
+  "risk_distance": 0.00016811098223148795,
+  "auto_leverage_by_stop": true
+}

@@ -1,0 +1,32 @@
+{
+  "trade_id": "683b38c9-c5e0-481a-96ee-dfc204cc9245",
+  "logged_at_utc": "2026-04-02T23:50:01.412491+00:00",
+  "entry_order_id": "c82a0f0c-7aa8-4e38-be48-8a72466fce51",
+  "analysis_context": {
+    "profile": "default",
+    "symbol": "WOOUSDT",
+    "timeframe": "5m",
+    "category": "linear",
+    "config_fingerprint": "27eefd2093",
+    "run_dir": "UPS_py_v2/live/analysis/runs/default/woousdt/5m/linear__cfg_27eefd2093"
+  },
+  "symbol": "WOOUSDT",
+  "signal_type": "long",
+  "bar_open": 0.016455,
+  "bar_high": 0.016496,
+  "bar_low": 0.016455,
+  "bar_close": 0.016496,
+  "bar_volume": 667.0,
+  "bar_atr": 3.514407186756081e-05,
+  "price_above_ma": true,
+  "long_conditions_met": true,
+  "bearish_pb": true,
+  "long_entry_pattern": true,
+  "intended_entry_price": 0.016496,
+  "intended_qty": 565.3,
+  "order_type": "Limit",
+  "stop_price": 0.016396855928132437,
+  "target_price": 0.016595144071867563,
+  "risk_distance": 9.914407186756291e-05,
+  "auto_leverage_by_stop": true
+}

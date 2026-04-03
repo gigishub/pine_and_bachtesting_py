@@ -1,0 +1,51 @@
+//@version=6
+indicator("Intelligent Regime Filter V6 [Final]", overlay=true)
+
+// --- KAMA FUNCTION DEFINITION ---
+// Re-engineered for v6 strict typing
+f_kama(float src, int length) =>
+    // Changed ta.sum to math.sum here
+    float er = math.abs(src - src[length]) / math.sum(math.abs(src - src[1]), length)
+    float sc = math.pow(er * (2.0 / 3.0 - 2.0 / 31.0) + 2.0 / 31.0, 2)
+    var float kama = na
+    kama := na(kama) ? src : kama + sc * (src - kama)
+    kama
+
+// --- INPUTS ---
+int vol_lookback     = input.int(20, "Volume Lookback")
+float rvol_threshold = input.float(1.2, "RVOL Threshold (Energy)")
+int atr_lookback     = input.int(14, "ATR Lookback")
+float atr_mult       = input.float(1.0, "ATR Velocity Threshold")
+int kama_len         = input.int(10, "KAMA Length")
+
+// --- CALCULATIONS ---
+// 1. KAMA Calculation
+float kama_val = f_kama(close, kama_len)
+
+// 2. Relative Volume (RVOL)
+float avg_vol = ta.sma(volume, vol_lookback)
+float rvol = volume / avg_vol
+
+// 3. ATR Velocity (Volatility Expansion)
+float current_atr = ta.atr(atr_lookback)
+float avg_atr = ta.sma(current_atr, vol_lookback)
+float atr_velocity = current_atr / avg_atr
+
+// --- REGIME LOGIC ---
+bool is_trending = (rvol > rvol_threshold) and (atr_velocity > atr_mult)
+bool is_bullish  = is_trending and (close > kama_val)
+bool is_bearish  = is_trending and (close < kama_val)
+
+// --- VISUALS ---
+// Background Colors
+color bg_color = is_bullish ? color.new(color.green, 85) : is_bearish ? color.new(color.red, 85) : color.new(color.gray, 92)
+bgcolor(bg_color)
+
+// Plot KAMA
+plot(kama_val, "KAMA Line", color = (close > kama_val ? color.green : color.red), linewidth=2)
+
+// --- DASHBOARD TABLE ---
+var table regTable = table.new(position.top_right, 2, 1, border_width = 1)
+if barstate.islast
+    table.cell(regTable, 0, 0, "Current Regime:", bgcolor=color.black, text_color=color.white)
+    table.cell(regTable, 1, 0, is_trending ? "TRENDING" : "SIDEWAYS", bgcolor=(is_trending ? color.green : color.red), text_color=color.white)

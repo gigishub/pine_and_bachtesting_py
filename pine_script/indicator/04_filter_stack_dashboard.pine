@@ -1,0 +1,46 @@
+//@version=6
+indicator("04 Filter Stack Dashboard", overlay=false)
+
+var const string G_MAIN = "Main"
+
+// Inputs mirror strategy filters so you can inspect each component alone or stacked.
+i_HigherTimeframe = input.timeframe("W", "Higher Timeframe", group=G_MAIN)
+i_EmaLength       = input.int(20, "EMA Length", minval=1, group=G_MAIN)
+i_AtrLength       = input.int(5, "ATR Length", minval=1, group=G_MAIN)
+i_Lookback        = input.int(7, "Range Lookback", minval=2, group=G_MAIN)
+i_CautionMult     = input.float(1.5, "Caution ATR Multiplier", minval=0.1, step=0.1, group=G_MAIN)
+i_BbLength        = input.int(20, "BB Length", minval=1, group=G_MAIN)
+i_BbMult          = input.float(2.0, "BB Mult", minval=0.1, step=0.1, group=G_MAIN)
+
+RequestSecurity_NonRP(_market, _res, _exp) =>
+    request.security(_market, _res, _exp[barstate.isrealtime ? 1 : 0])[barstate.isrealtime ? 0 : 1]
+
+float emaValue = ta.ema(close, i_EmaLength)
+float htfEmaValue = RequestSecurity_NonRP(syminfo.tickerid, i_HigherTimeframe, emaValue)
+float atrValue = ta.atr(i_AtrLength)
+float highestPrice = ta.highest(high, i_Lookback)
+float lowestPrice = ta.lowest(low, i_Lookback)
+
+float bbBasis = ta.sma(close, i_BbLength)
+float bbDev = ta.stdev(close, i_BbLength) * i_BbMult
+float bbLower = bbBasis - bbDev
+
+bool isBullish = close > htfEmaValue
+bool isBearish = close < htfEmaValue
+bool isCautionLong = isBullish and ((highestPrice - low) > (atrValue * i_CautionMult) or close < emaValue)
+bool isCautionShort = isBearish and ((high - lowestPrice) > (atrValue * i_CautionMult) or close > emaValue)
+bool bbDowntrend = close < bbBasis and bbBasis < bbBasis[1] and close < bbLower
+
+bool longFilterPass = isBullish and not isCautionLong
+bool shortFilterPass = isBearish and not isCautionShort and bbDowntrend
+
+plot(isBullish ? 1 : 0, title="1 Regime Bull", color=color.green, linewidth=2, style=plot.style_stepline)
+plot(isBearish ? 1 : 0, title="2 Regime Bear", color=color.red, linewidth=2, style=plot.style_stepline)
+plot(isCautionLong ? 1 : 0, title="3 Caution Long", color=color.orange, linewidth=2, style=plot.style_stepline)
+plot(isCautionShort ? 1 : 0, title="4 Caution Short", color=color.maroon, linewidth=2, style=plot.style_stepline)
+plot(bbDowntrend ? 1 : 0, title="5 BB Downtrend", color=color.purple, linewidth=2, style=plot.style_stepline)
+plot(longFilterPass ? 1 : 0, title="6 Long Pass", color=color.aqua, linewidth=3, style=plot.style_stepline)
+plot(shortFilterPass ? 1 : 0, title="7 Short Pass", color=color.fuchsia, linewidth=3, style=plot.style_stepline)
+
+hline(0, "Off", color=color.new(color.gray, 70))
+hline(1, "On", color=color.new(color.gray, 70))
