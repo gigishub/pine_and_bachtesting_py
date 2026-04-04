@@ -17,7 +17,7 @@ import pandas as pd
 from backtesting.lib import FractionalBacktest
 
 from .strategy import UPSStrategy
-from ..strategy.types import StrategySettings
+from ..strategy.strategy_parameters import StrategySettings
 
 
 def _load_csv(path: str) -> pd.DataFrame:
@@ -92,10 +92,11 @@ def run(
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Run UPS backtest (refactored)")
     parser.add_argument("--csv", default=None, help="Path to OHLCV CSV file")
-    parser.add_argument("--symbol", default="XBTUSDTM")
+    parser.add_argument("--source", default="bybit", choices=["bybit", "kucoin"])
+    parser.add_argument("--symbol", default="BTCUSDT")
     parser.add_argument("--market-type", default="futures", choices=["futures", "spot"])
-    parser.add_argument("--timeframe", default="1day")
-    parser.add_argument("--start-time", default="2020-03-25 00:00:00")
+    parser.add_argument("--timeframe", default="1h")
+    parser.add_argument("--start-time", default="2025-03-25 00:00:00")
     parser.add_argument("--end-time", default=None)
     parser.add_argument("--no-plot", action="store_true")
     parser.add_argument("--plot-filename", default="ups_backtest_plot.html")
@@ -104,10 +105,10 @@ if __name__ == "__main__":
     if args.csv:
         data = _load_csv(args.csv)
     else:
-        # Lazy import so the runner can still be imported without kucoin deps
+        # Lazy import so the runner can still be imported without exchange deps
         from ..data.fetch import load_ohlcv
         data = load_ohlcv(
-            source="kucoin",
+            source=args.source,
             symbol=args.symbol,
             market_type=args.market_type,
             timeframe=args.timeframe,

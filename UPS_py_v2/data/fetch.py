@@ -14,7 +14,7 @@ from .fetch_bybit_candles import load_ohlcv_bybit
 
 
 def load_ohlcv(
-    source: str = "kucoin",
+    source: str = "bybit",
     *,
     symbol: str,
     market_type: str = "futures",

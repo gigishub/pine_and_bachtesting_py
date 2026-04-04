@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import time
 from datetime import datetime, timezone
-from typing import Optional
 
 import pandas as pd
 import requests
@@ -57,6 +56,14 @@ def _to_bybit_category(market_type: str) -> str:
 
 def _normalize_symbol(symbol: str) -> str:
     return symbol.replace("-", "").upper()
+
+
+def _candle_timestamp(candle: list[str] | dict[str, object]) -> int:
+    if isinstance(candle, dict):
+        raw = candle.get("id") or candle.get("open_time") or candle.get("start_at")
+    else:
+        raw = candle[0] if candle else 0
+    return int(raw) if raw is not None else 0
 
 
 def fetch_bybit_candles_chunk(
@@ -126,18 +133,15 @@ def fetch_all_bybit_candles(
             symbol,
             market_type,
             timeframe,
-            datetime.utcfromtimestamp(current_from / 1000).strftime("%Y-%m-%d %H:%M:%S"),
-            datetime.utcfromtimestamp(current_to / 1000).strftime("%Y-%m-%d %H:%M:%S"),
+            datetime.fromtimestamp(current_from / 1000, timezone.utc).strftime("%Y-%m-%d %H:%M:%S"),
+            datetime.fromtimestamp(current_to / 1000, timezone.utc).strftime("%Y-%m-%d %H:%M:%S"),
         )
         if not chunk:
             break
 
-        candles.extend(chunk)
-        last_item = chunk[-1]
-        if isinstance(last_item, dict):
-            last_ts = int(last_item.get("id") or last_item.get("open_time") or last_item.get("start_at"))
-        else:
-            last_ts = int(last_item[0])
+        ordered_chunk = sorted(chunk, key=_candle_timestamp)
+        candles.extend(ordered_chunk)
+        last_ts = _candle_timestamp(ordered_chunk[-1])
 
         if last_ts <= current_from:
             break
@@ -172,20 +176,14 @@ def fetch_all_bybit_candles(
             "Volume": float(c[5]),
         }
 
-    def _index_ts(c):
-        if isinstance(c, dict):
-            raw = c.get("id") or c.get("open_time") or c.get("start_at")
-        else:
-            raw = c[0] if len(c) > 0 else 0
-        return int(raw) if raw is not None else 0
-
     processed = [
         normalize_row(c)
         for c in candles
-        if start_ts <= _index_ts(c) <= end_ts
+        if start_ts <= _candle_timestamp(c) <= end_ts
     ]
     processed.sort(key=lambda item: item["Timestamp"])
     df = pd.DataFrame(processed)
+    df = df.drop_duplicates(subset=["Timestamp"], keep="last")
     df["Date"] = pd.to_datetime(df["Timestamp"], unit="ms", utc=True)
     df = df.set_index("Date")
     return df[["Open", "High", "Low", "Close", "Volume"]]
