@@ -14,16 +14,15 @@ from .config import (
     DEFAULT_OPTIMIZATION_CONFIG_V3,
     DatasetConfig,
     OptimizationConfigV3,
-    build_primary_dataset,
     build_validation_datasets,
 )
 from .models import RobustnessArtifactsV3
 
 logger = logging.getLogger(__name__)
 
-STEP_PRIMARY_SEARCH = "primary_search"
-STEP_MATRIX_VALIDATION = "matrix_validation"
-ALL_STEPS = {STEP_PRIMARY_SEARCH, STEP_MATRIX_VALIDATION}
+STEP_PARAMETER_GRID = "parameter_grid"
+STEP_DATASET_RUNS = "dataset_runs"
+ALL_STEPS = {STEP_PARAMETER_GRID, STEP_DATASET_RUNS}
 
 DataLoader = Callable[[DatasetConfig], pd.DataFrame]
 BacktestRunner = Callable[[pd.DataFrame, dict[str, Any]], pd.Series]
@@ -186,7 +185,7 @@ def rank_results(results: pd.DataFrame) -> pd.DataFrame:
     )
 
 
-def run_primary_search(
+def run_dataset_search(
     df: pd.DataFrame,
     dataset: DatasetConfig,
     baseline_params: dict[str, Any],
@@ -199,7 +198,7 @@ def run_primary_search(
         try:
             stats = backtest_runner(df, params)
         except Exception as exc:
-            logger.warning("Primary search failed for %s %s", dataset.dataset_key, exc)
+            logger.warning("Dataset search failed for %s %s", dataset.dataset_key, exc)
             continue
         rows.append(
             _metric_row(
@@ -216,95 +215,29 @@ def run_primary_search(
     return rank_results(pd.DataFrame(rows))
 
 
-def select_primary_candidates(primary_results: pd.DataFrame, top_n: int) -> pd.DataFrame:
-    return primary_results.loc[primary_results["Rank"] <= top_n].copy().reset_index(drop=True)
-
-
-def summarize_validation_results(
-    validation_results: pd.DataFrame,
-    *,
-    expected_datasets: int,
-    parameter_names: tuple[str, ...],
-) -> pd.DataFrame:
-    if validation_results.empty:
-        return pd.DataFrame()
-
-    rows: list[dict[str, Any]] = []
-    for signature, frame in validation_results.groupby("Parameter Signature", dropna=False):
-        first = frame.iloc[0]
-        row: dict[str, Any] = {
-            "Parameter Signature": signature,
-            "Coverage": int(frame["Dataset"].nunique()),
-            "Expected Coverage": expected_datasets,
-            "Positive Expectancy Hits": int((frame["Expectancy [%]"] > 0).sum()),
-            "Positive Return Hits": int((frame["Return [%]"] > 0).sum()),
-            "Avg Expectancy [%]": float(frame["Expectancy [%]"].mean()),
-            "Min Expectancy [%]": float(frame["Expectancy [%]"].min()),
-            "Avg Return [%]": float(frame["Return [%]"].mean()),
-            "Min Return [%]": float(frame["Return [%]"].min()),
-            "Avg Profit Factor": float(frame["Profit Factor"].fillna(0.0).mean()),
-            "Avg # Trades": float(frame["# Trades"].mean()),
-        }
-        for name in parameter_names:
-            row[name] = first[name]
-        rows.append(row)
-
-    summary = pd.DataFrame(rows)
-    return summary.sort_values(
-        by=[
-            "Positive Expectancy Hits",
-            "Avg Expectancy [%]",
-            "Min Expectancy [%]",
-            "Avg Return [%]",
-            "Min Return [%]",
-        ],
-        ascending=[False, False, False, False, False],
-    ).reset_index(drop=True)
-
-
-def run_matrix_validation(
+def run_matrix_datasets(
     baseline_params: dict[str, Any],
-    primary_candidates: pd.DataFrame,
     config: OptimizationConfigV3 = DEFAULT_OPTIMIZATION_CONFIG_V3,
     *,
     data_loader: DataLoader = load_dataset,
     backtest_runner: BacktestRunner = run_backtest,
-) -> tuple[pd.DataFrame, pd.DataFrame]:
-    if primary_candidates.empty:
-        return pd.DataFrame(), pd.DataFrame()
-
-    parameter_lookup = {
-        build_parameter_signature(params, config.parameter_names): params
-        for params in build_parameter_grid(baseline_params, config)
-    }
-    validation_rows: list[dict[str, Any]] = []
+) -> pd.DataFrame:
+    frames: list[pd.DataFrame] = []
     datasets = build_validation_datasets(config)
 
     for dataset in datasets:
         df = ensure_min_bars(data_loader(dataset), dataset=dataset, min_bars=config.min_bars)
-        for signature in primary_candidates["Parameter Signature"]:
-            params = parameter_lookup[signature]
-            try:
-                stats = backtest_runner(df, params)
-            except Exception as exc:
-                logger.warning("Matrix validation failed for %s %s", dataset.dataset_key, exc)
-                continue
-            validation_rows.append(
-                _metric_row(
-                    stats,
-                    dataset=dataset,
-                    params=params,
-                    parameter_names=config.parameter_names,
-                )
+        frames.append(
+            run_dataset_search(
+                df,
+                dataset,
+                baseline_params,
+                config,
+                backtest_runner=backtest_runner,
             )
+        )
 
-    validation_results = rank_results(pd.DataFrame(validation_rows)) if validation_rows else pd.DataFrame()
-    validation_summary = summarize_validation_results(
-        validation_results,
-        expected_datasets=len(datasets),
-        parameter_names=config.parameter_names,
-    )
-    return validation_results, validation_summary
+    return pd.concat(frames, ignore_index=True) if frames else pd.DataFrame()
 
 
 def run_robustness_pipeline(
@@ -319,32 +252,16 @@ def run_robustness_pipeline(
 
     artifacts = RobustnessArtifactsV3()
     baseline_params = config.build_baseline_params()
-    primary_dataset = build_primary_dataset(config)
-    primary_df = ensure_min_bars(data_loader(primary_dataset), dataset=primary_dataset, min_bars=config.min_bars)
-
-    artifacts.primary_results = run_primary_search(
-        primary_df,
-        primary_dataset,
-        baseline_params,
-        config,
-        backtest_runner=backtest_runner,
-    )
-    artifacts.primary_candidates = select_primary_candidates(artifacts.primary_results, config.top_n)
-    artifacts.completed_step = STEP_PRIMARY_SEARCH
-    if stop_after == STEP_PRIMARY_SEARCH:
+    artifacts.parameter_grid_size = len(build_parameter_grid(baseline_params, config))
+    artifacts.completed_step = STEP_PARAMETER_GRID
+    if stop_after == STEP_PARAMETER_GRID:
         return artifacts
 
-    artifacts.validation_results, artifacts.validation_summary = run_matrix_validation(
+    artifacts.dataset_results = run_matrix_datasets(
         baseline_params,
-        artifacts.primary_candidates,
         config,
         data_loader=data_loader,
         backtest_runner=backtest_runner,
     )
-    if not artifacts.validation_summary.empty:
-        artifacts.finalist_params = {
-            name: artifacts.validation_summary.iloc[0][name]
-            for name in config.parameter_names
-        }
-    artifacts.completed_step = STEP_MATRIX_VALIDATION
+    artifacts.completed_step = STEP_DATASET_RUNS
     return artifacts

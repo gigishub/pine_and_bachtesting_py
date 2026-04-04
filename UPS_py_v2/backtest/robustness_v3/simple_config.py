@@ -6,15 +6,15 @@ from .config import OptimizationConfigV3
 def build_simple_config() -> OptimizationConfigV3:
     """Edit this file for the normal v3 workflow instead of passing CLI flags."""
 
+    symbols = ["BTCUSDT"]
+    timeframes = ["1day"]
+
     config = OptimizationConfigV3(
-        primary_symbol="BTCUSDT",
-        primary_timeframe="1h",
-        validation_symbols=["BTCUSDT"],
-        validation_timeframes=["1day"],
         start_time="2025-01-01 00:00:00",
         min_bars=150,
         top_n=10,
     )
+    config.set_matrix_scope(symbols=symbols, timeframes=timeframes)
 
     # Step 1 core grid: True/False entry filters.
     config.boolean_filter_ranges = {
@@ -27,7 +27,7 @@ def build_simple_config() -> OptimizationConfigV3:
     }
 
     # Step 1 core grid: four easy-to-edit risk:reward values.
-    config.set_risk_reward_range(1.5, 2.0, 3.0, 5.0)
+    config.set_risk_reward_range(1, 2.0)
 
     # Optional ranges are empty by default.
     # Add them only when you want that filter's internal values optimized.

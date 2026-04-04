@@ -135,6 +135,26 @@ class OptimizationConfigV3:
             raise ValueError("At least one validation timeframe must remain")
         self.validation_timeframes = cleaned
 
+    def set_matrix_scope(
+        self,
+        *,
+        symbols: list[str],
+        timeframes: list[str],
+        primary_symbol: str | None = None,
+        primary_timeframe: str | None = None,
+    ) -> None:
+        cleaned_symbols = [symbol for symbol in symbols if symbol]
+        cleaned_timeframes = [timeframe for timeframe in timeframes if timeframe]
+        if not cleaned_symbols:
+            raise ValueError("At least one symbol must be provided")
+        if not cleaned_timeframes:
+            raise ValueError("At least one timeframe must be provided")
+
+        self.validation_symbols = cleaned_symbols
+        self.validation_timeframes = cleaned_timeframes
+        self.primary_symbol = primary_symbol or cleaned_symbols[0]
+        self.primary_timeframe = primary_timeframe or cleaned_timeframes[0]
+
     def set_boolean_filter_range(self, name: str, *values: bool) -> None:
         if not values:
             raise ValueError(f"Boolean filter range for {name} cannot be empty")

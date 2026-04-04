@@ -10,14 +10,14 @@ from .config import (
 )
 from .models import RobustnessArtifactsV3
 from .pipeline import (
-    STEP_MATRIX_VALIDATION,
-    STEP_PRIMARY_SEARCH,
+    STEP_DATASET_RUNS,
+    STEP_PARAMETER_GRID,
     build_parameter_grid,
     build_parameter_signature,
     load_dataset,
     run_backtest,
-    run_matrix_validation,
-    run_primary_search,
+    run_dataset_search,
+    run_matrix_datasets,
     run_robustness_pipeline,
 )
 from .reporting import render_pipeline_report
@@ -30,8 +30,8 @@ __all__ = [
     "DatasetConfig",
     "OptimizationConfigV3",
     "RobustnessArtifactsV3",
-    "STEP_MATRIX_VALIDATION",
-    "STEP_PRIMARY_SEARCH",
+    "STEP_DATASET_RUNS",
+    "STEP_PARAMETER_GRID",
     "build_baseline_params",
     "build_parameter_grid",
     "build_parameter_signature",
@@ -41,7 +41,7 @@ __all__ = [
     "load_dataset",
     "render_pipeline_report",
     "run_backtest",
-    "run_matrix_validation",
-    "run_primary_search",
+    "run_dataset_search",
+    "run_matrix_datasets",
     "run_robustness_pipeline",
 ]

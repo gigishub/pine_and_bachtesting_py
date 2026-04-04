@@ -5,8 +5,8 @@ import argparse
 try:
     from .robustness_v3 import (
         DEFAULT_OPTIMIZATION_CONFIG_V3,
-        STEP_MATRIX_VALIDATION,
-        STEP_PRIMARY_SEARCH,
+        STEP_DATASET_RUNS,
+        STEP_PARAMETER_GRID,
         OptimizationConfigV3,
         render_pipeline_report,
         run_robustness_pipeline,
@@ -16,8 +16,8 @@ try:
 except ImportError:
     from UPS_py_v2.backtest.robustness_v3 import (
         DEFAULT_OPTIMIZATION_CONFIG_V3,
-        STEP_MATRIX_VALIDATION,
-        STEP_PRIMARY_SEARCH,
+        STEP_DATASET_RUNS,
+        STEP_PARAMETER_GRID,
         OptimizationConfigV3,
         render_pipeline_report,
         run_robustness_pipeline,
@@ -25,7 +25,7 @@ except ImportError:
     from UPS_py_v2.backtest.robustness_v3.config import ParameterValue
     from UPS_py_v2.strategy.strategy_parameters import StrategySettings
 
-STEP_CHOICES = [STEP_PRIMARY_SEARCH, STEP_MATRIX_VALIDATION]
+STEP_CHOICES = [STEP_PARAMETER_GRID, STEP_DATASET_RUNS]
 
 
 def _parse_value(raw: str) -> ParameterValue:

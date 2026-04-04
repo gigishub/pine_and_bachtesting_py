@@ -6,8 +6,8 @@ This version is meant to be adjusted in files, not through CLI flags.
 
 V3 has only two steps:
 
-1. Step 1 optimizes Boolean entry filters plus a small Risk:Reward set on one primary dataset.
-2. Step 2 takes the best Step 1 candidates and validates them across multiple assets and at least three timeframes.
+1. Step 1 defines the Boolean entry filter plus Risk:Reward grid.
+2. Step 2 runs that same grid on each symbol and timeframe independently.
 
 ## Files you edit
 
@@ -22,13 +22,11 @@ Simple runner:
 
 ## What to change in simple_config.py
 
-Primary optimization dataset:
-- `primary_symbol`
-- `primary_timeframe`
+You only need to set:
+- `symbols`
+- `timeframes`
 
-Validation matrix:
-- `validation_symbols`
-- `validation_timeframes`
+Step 2 loops through every symbol/timeframe combination from those lists.
 
 Core search space:
 - `config.boolean_filter_ranges`
@@ -89,8 +87,8 @@ When `use_iq_filter=False`, v3 automatically falls back to the default baseline 
 
 1. Edit [UPS_py_v2/backtest/robustness_v3/simple_config.py](/root/projects/pine_and_bachtesting_py/UPS_py_v2/backtest/robustness_v3/simple_config.py).
 2. Keep the first version simple: Boolean filters plus the four RR values.
-3. Add optional parameter ranges only after the simple version produces stable candidates.
-4. Use the matrix summary to judge whether the same setup survives across assets and timeframes.
+3. Add optional parameter ranges only after the simple version looks reasonable.
+4. Review the top rows for each dataset separately.
 
 ## How to run
 
@@ -119,12 +117,11 @@ Important:
 ## Output meaning
 
 Step 1 output:
-- ranked results on the primary dataset
-- top `top_n` candidates are kept for Step 2
+- grid size and the parameter ranges being tested
 
 Step 2 output:
-- validation results for each candidate across the matrix
-- summary table showing coverage and how many datasets kept positive expectancy and return
+- ranked results for each symbol/timeframe dataset
+- no cross-dataset comparison yet
 
 ## Notes
 

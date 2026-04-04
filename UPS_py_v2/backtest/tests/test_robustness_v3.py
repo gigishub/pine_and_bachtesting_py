@@ -3,8 +3,8 @@ from __future__ import annotations
 import pandas as pd
 
 from UPS_py_v2.backtest.robustness_v3 import (
-    STEP_MATRIX_VALIDATION,
-    STEP_PRIMARY_SEARCH,
+    STEP_DATASET_RUNS,
+    STEP_PARAMETER_GRID,
     OptimizationConfigV3,
     build_simple_config,
     build_parameter_grid,
@@ -47,8 +47,8 @@ def test_simple_config_keeps_file_based_defaults() -> None:
     config = build_simple_config()
 
     assert config.primary_symbol == "BTCUSDT"
-    assert config.primary_timeframe == "1h"
-    assert config.validation_timeframes == ["1h", "4h", "1day"]
+    assert config.primary_timeframe == "1day"
+    assert config.validation_timeframes == ["1day"]
     assert config.risk_reward_range == (1.5, 2.0, 3.0, 5.0)
     assert config.optional_parameter_ranges == {}
 
@@ -77,7 +77,7 @@ def test_v3_parameter_grid_uses_baseline_defaults_for_inactive_optional_params()
     assert {row["iq_lookback"] for row in inactive_rows} == {baseline["iq_lookback"]}
 
 
-def test_v3_pipeline_can_stop_after_primary_search() -> None:
+def test_v3_pipeline_can_stop_after_parameter_grid() -> None:
     config = OptimizationConfigV3(
         validation_symbols=["BTCUSDT", "ETHUSDT"],
         validation_timeframes=["1h", "4h", "1day"],
@@ -109,19 +109,17 @@ def test_v3_pipeline_can_stop_after_primary_search() -> None:
 
     artifacts = run_robustness_pipeline(
         config,
-        stop_after=STEP_PRIMARY_SEARCH,
+        stop_after=STEP_PARAMETER_GRID,
         data_loader=fake_loader,
         backtest_runner=fake_runner,
     )
 
-    assert artifacts.completed_step == STEP_PRIMARY_SEARCH
-    assert not artifacts.primary_results.empty
-    assert len(artifacts.primary_candidates) == 3
-    assert artifacts.validation_results.empty
-    assert artifacts.validation_summary.empty
+    assert artifacts.completed_step == STEP_PARAMETER_GRID
+    assert artifacts.parameter_grid_size > 0
+    assert artifacts.dataset_results.empty
 
 
-def test_v3_pipeline_runs_two_steps_and_aggregates_matrix_results() -> None:
+def test_v3_pipeline_runs_two_steps_and_returns_dataset_results_only() -> None:
     config = OptimizationConfigV3(
         boolean_filter_ranges={
             "use_iq_filter": (False, True),
@@ -158,15 +156,19 @@ def test_v3_pipeline_runs_two_steps_and_aggregates_matrix_results() -> None:
 
     artifacts = run_robustness_pipeline(
         config,
-        stop_after=STEP_MATRIX_VALIDATION,
+        stop_after=STEP_DATASET_RUNS,
         data_loader=fake_loader,
         backtest_runner=fake_runner,
     )
 
-    assert artifacts.completed_step == STEP_MATRIX_VALIDATION
-    assert not artifacts.primary_candidates.empty
-    assert len(artifacts.validation_results) == 12
-    assert not artifacts.validation_summary.empty
-    assert int(artifacts.validation_summary.iloc[0]["Coverage"]) == 6
-    assert int(artifacts.validation_summary.iloc[0]["Positive Expectancy Hits"]) == 6
-    assert artifacts.finalist_params is not None
+    assert artifacts.completed_step == STEP_DATASET_RUNS
+    assert artifacts.parameter_grid_size == 8
+    assert len(artifacts.dataset_results) == 48
+    assert set(artifacts.dataset_results["Dataset"].unique()) == {
+        "BTCUSDT 1h",
+        "BTCUSDT 4h",
+        "BTCUSDT 1day",
+        "ETHUSDT 1h",
+        "ETHUSDT 4h",
+        "ETHUSDT 1day",
+    }
