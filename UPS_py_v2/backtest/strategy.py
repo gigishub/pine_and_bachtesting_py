@@ -42,6 +42,18 @@ class UPSStrategy(Strategy):
     use_sq_boost = True
     sq_boost_weight = 0.3
     sq_vol_lookback = 20
+    # RSI filter
+    use_rsi_filter = False
+    rsi_period = 14
+    rsi_overbought = 70.0
+    # ADX filter
+    use_adx_filter = False
+    adx_period = 14
+    adx_min_strength = 20.0
+    # Volume filter
+    use_volume_filter = False
+    volume_filter_lookback = 20
+    volume_filter_multiplier = 1.0
     # Trade direction
     long_trades = True
     short_trades = True
@@ -91,6 +103,15 @@ class UPSStrategy(Strategy):
             use_sq_boost=self.use_sq_boost,
             sq_boost_weight=self.sq_boost_weight,
             sq_vol_lookback=self.sq_vol_lookback,
+            use_rsi_filter=self.use_rsi_filter,
+            rsi_period=self.rsi_period,
+            rsi_overbought=self.rsi_overbought,
+            use_adx_filter=self.use_adx_filter,
+            adx_period=self.adx_period,
+            adx_min_strength=self.adx_min_strength,
+            use_volume_filter=self.use_volume_filter,
+            volume_filter_lookback=self.volume_filter_lookback,
+            volume_filter_multiplier=self.volume_filter_multiplier,
             long_trades=self.long_trades,
             short_trades=self.short_trades,
             enable_ec=self.enable_ec,

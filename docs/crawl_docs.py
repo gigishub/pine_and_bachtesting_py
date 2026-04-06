@@ -57,14 +57,21 @@ def framework_name_from(url: str, soup: BeautifulSoup) -> str:
     title_tag = soup.find("title")
     if title_tag and title_tag.get_text(strip=True):
         raw = title_tag.get_text(strip=True)
-        # Split on common separators and take the first segment
-        for sep in ("|", "—", "-", "·", "–"):
-            raw = raw.split(sep)[0]
-        tokens = [t for t in slugify(raw).split("_") if t and t not in NOISE]
-        if tokens:
-            name = "_".join(tokens[:2])      # max 2 tokens → "backtesting_py"
-            if 2 < len(name) < 40:
-                return name
+        # Split on common title separators; collect all segments and pick the
+        # shortest meaningful one — framework brand names ("vectorbt", "backtesting")
+        # are typically shorter than page-level names ("Getting Started").
+        import re as _re
+        segments = _re.split(r"[|—\-·–]", raw)
+        best: str = ""
+        for seg in segments:
+            tokens = [t for t in slugify(seg).split("_") if t and t not in NOISE]
+            if not tokens:
+                continue
+            name = "_".join(tokens[:2])
+            if 2 < len(name) < 40 and (not best or len(name) < len(best)):
+                best = name
+        if best:
+            return best
 
     # Fall back to URL path segments
     parts = urlparse(url).path.strip("/").split("/")
@@ -182,12 +189,13 @@ def collect_links_from_sitemap(
     elif base_parts:
         path_prefix = "/" + base_parts[0]
     else:
-        path_prefix = "/docs"
+        # Root URL — accept all paths on this domain.
+        path_prefix = "/"
     # Try docs-local sitemap first, then host-level sitemap.
     sitemap_candidates = [
+        f"{parsed_base.scheme}://{base_domain}/sitemap.xml",
         urljoin(base_url, "sitemap.xml"),
         f"{parsed_base.scheme}://{base_domain}/docs/sitemap.xml",
-        f"{parsed_base.scheme}://{base_domain}/sitemap.xml",
     ]
 
     links: list[str] = []
@@ -212,8 +220,10 @@ def collect_links_from_sitemap(
             if not p.path.startswith(path_prefix):
                 continue
 
-            # Skip utility pages that are not useful as API reference docs.
-            if p.path in ("/docs/search", "/docs/markdown-page"):
+            # Skip obvious utility / non-content pages.
+            skip_exact = {"/docs/search", "/docs/markdown-page"}
+            skip_suffixes = ("/search", "/search/", "/404", "/404/")
+            if p.path in skip_exact or any(p.path.endswith(s) for s in skip_suffixes):
                 continue
 
             links.append(url)

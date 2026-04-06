@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import logging
 import math
+import os
+from concurrent.futures import ProcessPoolExecutor, as_completed
 from contextlib import contextmanager
 from itertools import product
 from typing import Any, Callable, Generator
@@ -17,6 +19,42 @@ from .config import DatasetConfig, RobustnessConfigV4
 from .models import METRIC_COLUMNS
 
 logger = logging.getLogger(__name__)
+
+# ---------------------------------------------------------------------------
+# Process-pool worker state
+# ---------------------------------------------------------------------------
+# These module-level globals are populated once per worker process via
+# _worker_init(), so the DataFrame is only pickled once per worker (not once
+# per backtest call).  Must be at module level for pickle to work.
+
+_worker_df: pd.DataFrame | None = None
+_worker_runner: BacktestRunner | None = None
+
+
+def _worker_init(df: pd.DataFrame, runner: BacktestRunner) -> None:
+    """Pool initialiser: load df and runner into process-local globals.
+
+    Also silences backtesting's internal tqdm bar for the lifetime of the worker
+    so parallel processes don't flood the terminal with overlapping bars.
+    """
+    global _worker_df, _worker_runner
+    original = _bt_module._tqdm
+    _bt_module._tqdm = lambda *a, **kw: original(*a, **{**kw, "disable": True})
+    _worker_df = df
+    _worker_runner = runner
+
+
+def _worker_run_one(params: dict[str, Any]) -> tuple[dict[str, Any] | None, str]:
+    """Run one backtest in a worker process.
+
+    Returns (stats_dict, error_message).  stats_dict is None on failure so the
+    main process can log the warning without needing a shared logger.
+    """
+    try:
+        stats = _worker_runner(_worker_df, params)  # type: ignore[misc]
+        return stats, ""
+    except Exception as exc:
+        return None, str(exc)
 
 # Type aliases for injectable dependencies — lets tests replace data loading and backtesting.
 DataLoader = Callable[[DatasetConfig], pd.DataFrame]
@@ -287,12 +325,35 @@ def run_condition(
     Returns a ranked DataFrame — every unique parameter combination is a row.
     Nothing is filtered out here; the sequencer saves the full result to CSV.
     The Rank column lets callers decide their own top-N cutoff later.
+
+    When config.n_jobs != 1 the grid is split across worker processes:
+      n_jobs > 1  → use that many workers
+      n_jobs == -1 → use all available CPU cores
     """
     baseline_params = config.build_baseline_params()
     grid = build_parameter_grid(baseline_params, config)
-    rows: list[dict[str, Any]] = []
 
-    # Suppress backtesting's per-run bars so our grid bar is the only thing visible.
+    if config.n_jobs == 1:
+        rows = _run_sequential(df, dataset, config, grid, backtest_runner)
+    else:
+        n_workers = os.cpu_count() if config.n_jobs == -1 else config.n_jobs
+        rows = _run_parallel(df, dataset, config, grid, backtest_runner, n_workers)
+
+    if not rows:
+        raise RuntimeError(f"No results produced for {dataset.condition_key}")
+
+    return _rank_results(pd.DataFrame(rows))
+
+
+def _run_sequential(
+    df: pd.DataFrame,
+    dataset: DatasetConfig,
+    config: RobustnessConfigV4,
+    grid: list[dict[str, Any]],
+    backtest_runner: BacktestRunner,
+) -> list[dict[str, Any]]:
+    """Original sequential grid loop — kept as-is for reproducibility and testing."""
+    rows: list[dict[str, Any]] = []
     with _suppress_backtest_progress():
         pbar = tqdm(grid, desc=dataset.condition_key, unit="combo", leave=False)
         for params in pbar:
@@ -314,7 +375,70 @@ def run_condition(
                     parameter_names=config.parameter_names,
                 )
             )
-            # Live postfix: highest expectancy seen so far + completed count.
+            if rows:
+                best_exp = max(
+                    (r["Expectancy [%]"] for r in rows if not math.isnan(r["Expectancy [%]"])),
+                    default=0.0,
+                )
+                pbar.set_postfix({"best_exp": f"{best_exp:.2f}%", "done": len(rows)})
+    return rows
+
+
+def _run_parallel(
+    df: pd.DataFrame,
+    dataset: DatasetConfig,
+    config: RobustnessConfigV4,
+    grid: list[dict[str, Any]],
+    backtest_runner: BacktestRunner,
+    n_workers: int,
+) -> list[dict[str, Any]]:
+    """Parallel grid loop using a process pool.
+
+    Each worker gets its own copy of `df` (loaded once per worker via the pool
+    initialiser) so the DataFrame is not re-pickled for every task.
+    """
+    rows: list[dict[str, Any]] = []
+    pbar = tqdm(total=len(grid), desc=f"{dataset.condition_key} ×{n_workers}", unit="combo", leave=False)
+
+    with ProcessPoolExecutor(
+        max_workers=n_workers,
+        initializer=_worker_init,
+        initargs=(df, backtest_runner),
+    ) as pool:
+        futures = {pool.submit(_worker_run_one, params): params for params in grid}
+        for future in as_completed(futures):
+            params = futures[future]
+            try:
+                stats, error = future.result()
+            except Exception as exc:
+                logger.warning(
+                    "Worker error for %s params=%s: %s",
+                    dataset.condition_key,
+                    build_parameter_signature(params, config.parameter_names),
+                    exc,
+                )
+                pbar.update(1)
+                continue
+
+            if stats is None:
+                logger.warning(
+                    "Backtest failed for %s params=%s: %s",
+                    dataset.condition_key,
+                    build_parameter_signature(params, config.parameter_names),
+                    error,
+                )
+                pbar.update(1)
+                continue
+
+            rows.append(
+                _build_row(
+                    stats,
+                    dataset=dataset,
+                    params=params,
+                    parameter_names=config.parameter_names,
+                )
+            )
+            pbar.update(1)
             if rows:
                 best_exp = max(
                     (r["Expectancy [%]"] for r in rows if not math.isnan(r["Expectancy [%]"])),
@@ -322,7 +446,5 @@ def run_condition(
                 )
                 pbar.set_postfix({"best_exp": f"{best_exp:.2f}%", "done": len(rows)})
 
-    if not rows:
-        raise RuntimeError(f"No results produced for {dataset.condition_key}")
-
-    return _rank_results(pd.DataFrame(rows))
+    pbar.close()
+    return rows

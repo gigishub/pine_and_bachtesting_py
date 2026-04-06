@@ -1,2 +1,6 @@
-- move code to server and let it run there to gather trades and information 
+
+
+- explore optuna is it difficult to implement here in my workflow 
+
+- 
 

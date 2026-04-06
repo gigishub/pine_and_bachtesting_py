@@ -27,6 +27,15 @@ DEFAULT_FEATURE_DEPENDENCIES: dict[str, tuple[str, ...]] = {
     "hammer_fib": ("enable_hammer",),
     "hammer_size": ("enable_hammer",),
     "ec_wick": ("enable_ec",),
+    # RSI child params only matter when use_rsi_filter=True
+    "rsi_period": ("use_rsi_filter",),
+    "rsi_overbought": ("use_rsi_filter",),
+    # ADX child params only matter when use_adx_filter=True
+    "adx_period": ("use_adx_filter",),
+    "adx_min_strength": ("use_adx_filter",),
+    # Volume child params only matter when use_volume_filter=True
+    "volume_filter_lookback": ("use_volume_filter",),
+    "volume_filter_multiplier": ("use_volume_filter",),
 }
 
 # Default on/off grid for entry filters — each gets tested both True and False.
@@ -38,6 +47,9 @@ DEFAULT_BOOLEAN_FILTER_RANGES: dict[str, ParameterRange] = {
     "enable_bullish_engulfing": (False, True),
     "enable_shooting_star": (False, True),
     "enable_hammer": (False, True),
+    "use_rsi_filter": (False, True),
+    "use_adx_filter": (False, True),
+    "use_volume_filter": (False, True),
 }
 
 # Default R:R values tested in every grid run.
@@ -108,6 +120,11 @@ class RobustnessConfigV4:
     # Top N cutoff for counting consistency in the robustness summary.
     # A setup scores 1 point per condition where its Rank <= consistency_top_n.
     consistency_top_n: int = 20
+    # Parallel workers for the backtest grid.
+    #   1  = sequential (safe for debugging, default)
+    #  -1  = use all available CPU cores
+    #   N  = use exactly N worker processes
+    n_jobs: int = 1
     # Default output dir; simple_config.py overrides this to sit inside the v4 folder.
     output_dir: Path = field(default_factory=lambda: Path("results"))
     baseline_settings: StrategySettings = field(default_factory=StrategySettings)

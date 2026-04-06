@@ -13,6 +13,9 @@ from .indicators.ma import compute_base_and_ma_context
 from .indicators.iq import compute_iq_filter_series
 from .indicators.candlestick_patterns import compute_long_pattern_and_entry_series
 from .indicators.pullback import compute_pullback_state_series
+from .indicators.rsi import compute_rsi_filter
+from .indicators.adx import compute_adx_filter
+from .indicators.volume_filter import compute_volume_filter
 
 
 def build_strategy_series(
@@ -34,6 +37,18 @@ def build_strategy_series(
     use_sq_boost: bool,
     sq_boost_weight: float,
     sq_vol_lookback: int,
+    # RSI filter
+    use_rsi_filter: bool,
+    rsi_period: int,
+    rsi_overbought: float,
+    # ADX filter
+    use_adx_filter: bool,
+    adx_period: int,
+    adx_min_strength: float,
+    # Volume filter
+    use_volume_filter: bool,
+    volume_filter_lookback: int,
+    volume_filter_multiplier: float,
     # Trade direction + patterns
     long_trades: bool,
     short_trades: bool,
@@ -111,6 +126,29 @@ def build_strategy_series(
         lookback=lookback,
     )
 
+    rsi = compute_rsi_filter(
+        close=close,
+        use_rsi_filter=use_rsi_filter,
+        rsi_period=rsi_period,
+        rsi_overbought=rsi_overbought,
+    )
+
+    adx = compute_adx_filter(
+        high=high,
+        low=low,
+        close=close,
+        use_adx_filter=use_adx_filter,
+        adx_period=adx_period,
+        adx_min_strength=adx_min_strength,
+    )
+
+    vol = compute_volume_filter(
+        volume=volume,
+        use_volume_filter=use_volume_filter,
+        volume_filter_lookback=volume_filter_lookback,
+        volume_filter_multiplier=volume_filter_multiplier,
+    )
+
     patterns = compute_long_pattern_and_entry_series(
         close=close,
         open_=open_,
@@ -131,6 +169,10 @@ def build_strategy_series(
         bullish_low_pb=pullback["bullish_low_pb"],
         bearish_close_pb=pullback["bearish_close_pb"],
         bearish_high_pb=pullback["bearish_high_pb"],
+        rsi_long_filter=rsi["rsi_long_filter"],
+        rsi_short_filter=rsi["rsi_short_filter"],
+        adx_filter=adx["adx_filter"],
+        volume_filter=vol["volume_filter"],
         long_trades=long_trades,
         short_trades=short_trades,
         enable_ec=enable_ec,
@@ -151,6 +193,9 @@ def build_strategy_series(
         **base,
         **iq,
         **pullback,
+        **rsi,
+        **adx,
+        **vol,
         **patterns,
         # Placeholders retained for backtest compatibility
         "long_stop_price": zero_float,

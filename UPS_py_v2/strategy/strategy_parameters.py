@@ -56,5 +56,20 @@ class StrategySettings:
     atr_length: int = 14
     point_allowance: int = 0
 
+    # RSI filter
+    use_rsi_filter: bool = False
+    rsi_period: int = 14
+    rsi_overbought: float = 70.0
+
+    # ADX filter
+    use_adx_filter: bool = False
+    adx_period: int = 14
+    adx_min_strength: float = 20.0
+
+    # Volume filter
+    use_volume_filter: bool = False
+    volume_filter_lookback: int = 20
+    volume_filter_multiplier: float = 1.0
+
     # Backtester sizing
     risk_per_trade: float = 1.0

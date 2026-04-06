@@ -49,6 +49,14 @@ def run_sequential(
 
     for dataset in outer:
         outer.set_postfix({"current": dataset.condition_key})
+        
+        # Check if this condition already exists (checkpoint resume).
+        csv_path = resolved_dir / f"{dataset.condition_key}.csv"
+        if csv_path.exists():
+            outer.write(f"  ✓ Already done: {dataset.condition_key}")
+            saved.append(csv_path)
+            continue
+        
         t_start = time.monotonic()
 
         try:
@@ -75,7 +83,6 @@ def run_sequential(
         condition_times.append(elapsed)
 
         # One CSV per condition — filename matches condition_key for easy identification.
-        csv_path = resolved_dir / f"{dataset.condition_key}.csv"
         results.to_csv(csv_path, index=False)
         saved.append(csv_path)
 

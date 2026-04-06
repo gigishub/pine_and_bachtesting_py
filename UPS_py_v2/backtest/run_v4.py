@@ -10,17 +10,28 @@ except ImportError:
     from UPS_py_v2.backtest.robustness_v4.reporter import build_robustness_summary
 
 import logging
-
-logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
+from pathlib import Path
 
 if __name__ == "__main__":
     config = build_simple_config()
+
+    # Log to both terminal and a file inside the run's output directory.
+    log_path = Path(config.output_dir) / "run.log"
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(levelname)s %(name)s: %(message)s",
+        handlers=[
+            logging.StreamHandler(),
+            logging.FileHandler(log_path, mode="a"),
+        ],
+    )
 
     print(f"\nV4 Robustness Run")
     print(f"  Symbols:    {', '.join(config.symbols)}")
     print(f"  Timeframes: {', '.join(config.timeframes)}")
     print(f"  Conditions: {len(config.build_datasets())}")
-    print(f"  Output dir: {config.output_dir}\n")
+    print(f"  Output dir: {config.output_dir}")
+    print(f"  Log file:   {log_path}\n")
 
     saved = run_sequential(config)
 

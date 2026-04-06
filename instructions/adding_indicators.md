@@ -205,10 +205,49 @@ Exit logic lives in `strategy/decision/exit.py` and is called bar-by-bar by the 
 | New indicator computation | `strategy/indicators/<name>.py` (new file) |
 | Wire indicator into pipeline | `strategy/signals.py` |
 | Add parameter defaults | `strategy/strategy_parameters.py` |
+| **Declare class variables on the strategy** | **`backtest/strategy.py`** — add as class variable AND pass in `init()` |
 | Declare parent/child dependencies | `backtest/robustness_v4/config.py` → `DEFAULT_FEATURE_DEPENDENCIES` |
 | Configure the robustness run | `backtest/robustness_v4/simple_config.py` |
 | New entry pattern | `strategy/indicators/candlestick_patterns.py` + signals.py + parameters |
 | New exit signal | `strategy/decision/exit.py` + signals.py (if precomputed) + parameters |
+
+---
+
+## ⚠️ Common mistake: missing class variable in `strategy.py`
+
+`backtesting.py` requires **every parameter passed to `Backtest.run()`** to be declared as a class-level variable on the `Strategy` class. If you forget this step you will see:
+
+```
+Strategy 'UPSStrategy' is missing parameter '<name>'.
+Strategy class should define parameters as class variables before they can be optimized or run with.
+```
+
+**Two things must be done in `backtest/strategy.py` for every new parameter:**
+
+### 1. Declare the class variable (matches the default in `StrategySettings`)
+```python
+class UPSStrategy(Strategy):
+    # ... existing params ...
+
+    # RSI filter
+    use_rsi_filter = False
+    rsi_period = 14
+    rsi_overbought = 70.0
+```
+
+### 2. Pass it to `build_strategy_series()` inside `init()`
+```python
+def init(self) -> None:
+    signals = build_strategy_series(
+        ...
+        use_rsi_filter=self.use_rsi_filter,
+        rsi_period=self.rsi_period,
+        rsi_overbought=self.rsi_overbought,
+        ...
+    )
+```
+
+> **Rule of thumb:** every key in `StrategySettings` must have a matching class variable in `UPSStrategy` with the same name and default value.
 
 ---
 

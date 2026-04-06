@@ -30,6 +30,11 @@ def compute_long_pattern_and_entry_series(
     bullish_low_pb: pd.Series,
     bearish_close_pb: pd.Series,
     bearish_high_pb: pd.Series,
+    # New orthogonal filters
+    rsi_long_filter: pd.Series,
+    rsi_short_filter: pd.Series,
+    adx_filter: pd.Series,
+    volume_filter: pd.Series,
     # Inputs
     long_trades: bool,
     short_trades: bool,
@@ -151,12 +156,18 @@ def compute_long_pattern_and_entry_series(
     long_conditions_met = (
         general_conditions_met
         & iq_long_filter.astype(bool)
+        & rsi_long_filter.astype(bool)
+        & adx_filter.astype(bool)
+        & volume_filter.astype(bool)
         & (candles_below_ma.astype(float) <= float(max_candles_beyond_ma))
         & pd.Series(bool(long_trades), index=close.index, dtype=bool)
     ).fillna(False)
     short_conditions_met = (
         general_conditions_met
         & iq_short_filter.astype(bool)
+        & rsi_short_filter.astype(bool)
+        & adx_filter.astype(bool)
+        & volume_filter.astype(bool)
         & (candles_above_ma.astype(float) <= float(max_candles_beyond_ma))
         & pd.Series(bool(short_trades), index=close.index, dtype=bool)
     ).fillna(False)
