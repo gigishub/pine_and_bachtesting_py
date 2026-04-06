@@ -13,8 +13,8 @@ import pandas as pd
 import pytest
 
 from UPS_py_v2.strategy.strategy_parameters import StrategySettings
-from UPS_py_v2.vectorbt.metrics import extract_stats
-from UPS_py_v2.vectorbt.runner import run
+from UPS_py_v2.backtest.vectorbt.metrics import extract_stats
+from UPS_py_v2.backtest.vectorbt.runner import run
 
 
 def _make_ohlcv(n: int = 400, seed: int = 99) -> pd.DataFrame:

@@ -14,16 +14,69 @@ from pathlib import Path
 import pandas as pd
 from tqdm import tqdm
 
-from ..backtest.robustness_v4.config import DatasetConfig, RobustnessConfigV4
+from ..config.default_config import DatasetConfig, RobustnessConfigV4
 from .pipeline import (
     BacktestRunner,
     load_dataset,
     ensure_min_bars,
     run_backtest_vbt,
     run_condition,
+    get_trade_log,
+    build_parameter_signature,
 )
 
 logger = logging.getLogger(__name__)
+
+
+def _save_trade_logs(
+    df: pd.DataFrame,
+    results: pd.DataFrame,
+    dataset: DatasetConfig,
+    config: RobustnessConfigV4,
+    output_dir: Path,
+) -> None:
+    """Re-run the top-N ranked combos and save their trade records to a CSV.
+
+    Called once per condition after the grid has been ranked.  The output file is:
+        {output_dir}/trades/{condition_key}_trade_log.csv
+
+    Checkpoint-safe: skipped if the file already exists.
+    """
+    trades_dir = output_dir / "trades"
+    trades_dir.mkdir(exist_ok=True)
+    trade_log_path = trades_dir / f"{dataset.condition_key}_trade_log.csv"
+
+    if trade_log_path.exists():
+        return  # already saved from a previous (partial) run
+
+    top_rows = results.head(config.trade_logs_top_n)
+    trade_dfs: list[pd.DataFrame] = []
+
+    for _, row in top_rows.iterrows():
+        params = {name: row[name] for name in config.parameter_names}
+        rank = int(row["Rank"])
+        sig = str(row["Parameter Signature"])
+        try:
+            tdf = get_trade_log(
+                df, params,
+                rank=rank, sig=sig,
+                condition=dataset.condition_key,
+                symbol=dataset.symbol,
+            )
+            if not tdf.empty:
+                trade_dfs.append(tdf)
+        except Exception as exc:
+            logger.warning("Trade log failed for %s rank %d: %s", dataset.condition_key, rank, exc)
+
+    if trade_dfs:
+        combined = pd.concat(trade_dfs, ignore_index=True)
+        combined.to_csv(trade_log_path, index=False)
+        logger.info(
+            "Trade log saved → %s (%d trades across top-%d combos)",
+            trade_log_path.name,
+            len(combined),
+            len(trade_dfs),
+        )
 
 
 def run_sequential(
@@ -89,6 +142,12 @@ def run_sequential(
 
         results.to_csv(csv_path, index=False)
         saved.append(csv_path)
+
+        # Save trade logs for the top-N ranked combos (re-run is fast vs the full grid).
+        # Output: {output_dir}/trades/{condition_key}_trade_log.csv
+        # Each row is one trade; Parameter Signature + Rank columns allow filter attribution.
+        if config.save_trade_logs:
+            _save_trade_logs(df, results, dataset, config, resolved_dir)
 
         outer.write(
             f"  ✓ {dataset.condition_key}  "

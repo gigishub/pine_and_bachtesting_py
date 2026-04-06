@@ -44,7 +44,7 @@ import logging
 import pandas as pd
 import vectorbt as vbt
 
-from ..strategy.strategy_parameters import StrategySettings
+from ...strategy.strategy_parameters import StrategySettings
 from .signals import build_vbt_arrays
 
 logger = logging.getLogger(__name__)
@@ -56,51 +56,75 @@ def run(
     *,
     fees: float = 0.001,
     init_cash: float = 10_000.0,
+    fill_at_next_open: bool = True,
 ) -> vbt.Portfolio:
     """Run the UPS strategy using vectorbt and return a Portfolio object.
 
     Args:
-        df:        OHLCV DataFrame with DatetimeIndex and Open/High/Low/Close/Volume columns.
-        settings:  Strategy parameters. Defaults to StrategySettings().
-        fees:      Round-trip commission rate (e.g. 0.001 = 0.1 %).
-        init_cash: Starting cash.
+        df:                OHLCV DataFrame with DatetimeIndex and columns Open/High/Low/Close/Volume.
+        settings:          Strategy parameters. Defaults to StrategySettings().
+        fees:              Round-trip commission rate (e.g. 0.001 = 0.1 %).
+        init_cash:         Starting cash.
+        fill_at_next_open: When True (default), entries are filled at the **open of the bar
+                           after the signal fires** — matching backtesting.py behaviour and
+                           avoiding look-ahead bias.  When False, entries fill at the close
+                           of the signal bar (vectorbt's default).
 
     Returns:
         vbt.Portfolio — call .stats() for metrics or .plot() for the chart.
 
     Note:
-        trail_stop is silently ignored. Use UPS_py_v2.backtest for trailing stop support.
+        trail_stop is silently ignored. Use the backtesting_py engine for trailing stop support.
     """
     s = settings or StrategySettings()
     arrs = build_vbt_arrays(df, s)
 
     freq = _infer_freq(df)
 
+    if fill_at_next_open:
+        # Shift all per-signal arrays forward by 1 bar so that vbt "sees" the
+        # signal on bar N+1 (the fill bar) rather than bar N (the signal bar).
+        # We also replace the close price fed to vbt with Open so that the fill
+        # price becomes the open of the fill bar — exactly what backtesting.py does.
+        #
+        # sl_stop / tp_stop / size are computed from bar N's ATR; shifting them
+        # forwards applies those same values on bar N+1 where the fill happens.
+        # vbt anchors sl/tp percentages to the actual fill price automatically.
+        entries       = arrs["entries"].shift(1, fill_value=False).astype(bool)
+        short_entries = arrs["short_entries"].shift(1, fill_value=False).astype(bool)
+        sl_stop       = arrs["sl_stop"].shift(1, fill_value=0.0)
+        tp_stop       = arrs["tp_stop"].shift(1, fill_value=0.0)
+        size          = arrs["size"].shift(1, fill_value=0.0)
+        fill_price    = df["Open"].astype(float)   # fill at open of the fill bar
+    else:
+        entries       = arrs["entries"]
+        short_entries = arrs["short_entries"]
+        sl_stop       = arrs["sl_stop"]
+        tp_stop       = arrs["tp_stop"]
+        size          = arrs["size"]
+        fill_price    = df["Close"].astype(float)  # fill at close of signal bar
+
     return vbt.Portfolio.from_signals(
-        # Price data — vbt uses OHLC to check whether a stop is hit WITHIN a bar
-        # (e.g. if high >= TP level the trade closes at TP even if close < TP).
-        # This is more accurate than backtesting.py which only checks on close.
-        close=df["Close"].astype(float),
+        # Price data.  vbt uses OHLC to check whether a stop is hit WITHIN a bar
+        # (if high >= TP level the trade closes at TP even when close < TP).
+        # close is also the fill price, so we swap it for Open when fill_at_next_open.
+        close=fill_price,
         high=df["High"].astype(float),
         low=df["Low"].astype(float),
         open=df["Open"].astype(float),
-        # Entry signals
-        entries=arrs["entries"],               # long entry at True bars
-        short_entries=arrs["short_entries"],   # short entry at True bars
-        # Stop and target — fractions from entry price, set at the time of entry.
-        # vbt anchors these to the actual fill price, not our pre-computed close.
-        sl_stop=arrs["sl_stop"],
-        tp_stop=arrs["tp_stop"],
-        # Position sizing — fraction of available cash per trade.
-        # Derived from risk_per_trade and the ATR stop distance (see signals.py).
-        size=arrs["size"],
-        size_type="percent",    # treat size as % of available cash (not $ amount)
+        entries=entries,
+        short_entries=short_entries,
+        sl_stop=sl_stop,
+        tp_stop=tp_stop,
+        # Fraction of available cash per trade (derived from risk_per_trade + ATR stop).
+        size=size,
+        size_type="percent",
         fees=fees,
         init_cash=init_cash,
-        # When the opposite signal fires while a position is open, close it first.
-        # Mirrors exclusive_orders=True in backtesting.py (no simultaneous long+short).
+        # Close any open position before entering the opposite direction —
+        # mirrors exclusive_orders=True in backtesting.py.
         upon_opposite_entry="close",
-        freq=freq,              # needed for annualised metrics (Sharpe, Calmar, etc.)
+        freq=freq,
     )
 
 

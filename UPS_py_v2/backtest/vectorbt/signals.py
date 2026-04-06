@@ -36,8 +36,8 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 
-from ..strategy.signals import build_strategy_series
-from ..strategy.strategy_parameters import StrategySettings
+from ...strategy.signals import build_strategy_series
+from ...strategy.strategy_parameters import StrategySettings
 
 
 def build_vbt_arrays(

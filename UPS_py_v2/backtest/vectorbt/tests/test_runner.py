@@ -11,7 +11,7 @@ import pytest
 import vectorbt as vbt
 
 from UPS_py_v2.strategy.strategy_parameters import StrategySettings
-from UPS_py_v2.vectorbt.runner import run
+from UPS_py_v2.backtest.vectorbt.runner import run
 
 
 def _make_ohlcv(n: int = 400, seed: int = 7) -> pd.DataFrame:

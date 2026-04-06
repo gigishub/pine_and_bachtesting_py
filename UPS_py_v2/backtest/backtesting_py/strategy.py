@@ -8,19 +8,19 @@ from __future__ import annotations
 
 from backtesting import Strategy
 
-from ..strategy.signals import build_strategy_series
-from ..strategy.decision.entry import should_open_long, should_open_short
-from ..strategy.decision.exit import should_close_long, should_close_short
-from ..strategy.risk.sl_tp import (
+from ...strategy.signals import build_strategy_series
+from ...strategy.decision.entry import should_open_long, should_open_short
+from ...strategy.decision.exit import should_close_long, should_close_short
+from ...strategy.risk.sl_tp import (
     compute_long_stop, compute_short_stop,
     compute_long_target, compute_short_target,
 )
-from ..strategy.risk.trailing import (
+from ...strategy.risk.trailing import (
     compute_long_trail_candidate, compute_short_trail_candidate,
     update_long_trail_stop, update_short_trail_stop,
     active_long_stop, active_short_stop,
 )
-from ..strategy.risk.sizing import compute_long_size_fraction, compute_short_size_fraction
+from ...strategy.risk.sizing import compute_long_size_fraction, compute_short_size_fraction
 
 
 class UPSStrategy(Strategy):

@@ -14,9 +14,9 @@ from backtesting.lib import FractionalBacktest
 from tqdm import tqdm
 
 from ...data.fetch import load_ohlcv
-from ..strategy import UPSStrategy
-from .config import DatasetConfig, RobustnessConfigV4
-from .models import METRIC_COLUMNS
+from .strategy import UPSStrategy
+from ..config.default_config import DatasetConfig, RobustnessConfigV4
+from ..reporting.models import METRIC_COLUMNS
 
 logger = logging.getLogger(__name__)
 
@@ -95,6 +95,61 @@ def load_dataset(dataset: DatasetConfig) -> pd.DataFrame:
 def run_backtest(df: pd.DataFrame, params: dict[str, Any]) -> pd.Series:
     """Run one backtest with a given parameter set. Returns backtesting.py stats Series."""
     return build_backtest(df).run(**params)
+
+
+def get_trade_log(
+    df: pd.DataFrame,
+    params: dict[str, Any],
+    *,
+    rank: int,
+    sig: str,
+    condition: str,
+    symbol: str,
+) -> pd.DataFrame:
+    """Re-run one parameter set and return its trade records as a tidy DataFrame.
+
+    Called by the sequencer for the top-N ranked combos after the grid is complete.
+    Each row is one closed trade.  Useful for post-run filter attribution:
+      e.g. filter by Parameter Signature to compare long-only vs short-only trades,
+      or group by Direction to see if longs or shorts are dragging performance.
+
+    Args:
+        df:        OHLCV data for this condition.
+        params:    Full parameter dict for this combo (as returned by the grid builder).
+        rank:      Rank of this combo in the condition results (1 = best).
+        sig:       Parameter signature string (used as a join key in analysis).
+        condition: Condition key, e.g. "BTC_1H".
+        symbol:    Symbol, e.g. "BTCUSDT".
+
+    Returns:
+        DataFrame with one row per trade.  Empty DataFrame if no trades were taken.
+    """
+    result = build_backtest(df).run(**params)
+
+    trades = getattr(result, "_trades", None)
+    if trades is None or trades.empty:
+        return pd.DataFrame()
+
+    # Select the most useful columns for post-run analysis.
+    base_cols = ["EntryTime", "ExitTime", "EntryPrice", "ExitPrice", "Size", "PnL", "ReturnPct"]
+    tag_col = ["Tag"] if "Tag" in trades.columns else []
+    sl_tp = [c for c in ("SL", "TP") if c in trades.columns]
+    tlog = trades[base_cols + sl_tp + tag_col].copy()
+
+    # ReturnPct in backtesting.py is already a fraction; convert to percent.
+    if "ReturnPct" in tlog.columns:
+        tlog = tlog.rename(columns={"ReturnPct": "Return [%]"})
+        tlog["Return [%]"] = (tlog["Return [%]"] * 100).round(4)
+
+    # Derive Direction from Size sign (positive = Long, negative = Short).
+    tlog["Direction"] = tlog["Size"].apply(lambda s: "Long" if s > 0 else "Short")
+
+    # Prepend identity columns so the trade log is self-contained.
+    tlog.insert(0, "Condition",           condition)
+    tlog.insert(0, "Symbol",              symbol)
+    tlog.insert(0, "Rank",                rank)
+    tlog.insert(0, "Parameter Signature", sig)
+    return tlog.reset_index(drop=True)
 
 
 def ensure_min_bars(df: pd.DataFrame, *, dataset: DatasetConfig, min_bars: int) -> pd.DataFrame:
@@ -354,6 +409,7 @@ def _run_sequential(
 ) -> list[dict[str, Any]]:
     """Original sequential grid loop — kept as-is for reproducibility and testing."""
     rows: list[dict[str, Any]] = []
+    best_exp = 0.0  # running max — avoids O(n²) scan on every iteration
     with _suppress_backtest_progress():
         pbar = tqdm(grid, desc=dataset.condition_key, unit="combo", leave=False)
         for params in pbar:
@@ -367,20 +423,17 @@ def _run_sequential(
                     exc,
                 )
                 continue
-            rows.append(
-                _build_row(
-                    stats,
-                    dataset=dataset,
-                    params=params,
-                    parameter_names=config.parameter_names,
-                )
+            row = _build_row(
+                stats,
+                dataset=dataset,
+                params=params,
+                parameter_names=config.parameter_names,
             )
-            if rows:
-                best_exp = max(
-                    (r["Expectancy [%]"] for r in rows if not math.isnan(r["Expectancy [%]"])),
-                    default=0.0,
-                )
-                pbar.set_postfix({"best_exp": f"{best_exp:.2f}%", "done": len(rows)})
+            rows.append(row)
+            exp = row["Expectancy [%]"]
+            if not math.isnan(exp) and exp > best_exp:
+                best_exp = exp
+            pbar.set_postfix({"best_exp": f"{best_exp:.2f}%", "done": len(rows)})
     return rows
 
 
@@ -398,6 +451,7 @@ def _run_parallel(
     initialiser) so the DataFrame is not re-pickled for every task.
     """
     rows: list[dict[str, Any]] = []
+    best_exp = 0.0  # running max — avoids O(n²) scan on every iteration
     pbar = tqdm(total=len(grid), desc=f"{dataset.condition_key} ×{n_workers}", unit="combo", leave=False)
 
     with ProcessPoolExecutor(
@@ -439,12 +493,10 @@ def _run_parallel(
                 )
             )
             pbar.update(1)
-            if rows:
-                best_exp = max(
-                    (r["Expectancy [%]"] for r in rows if not math.isnan(r["Expectancy [%]"])),
-                    default=0.0,
-                )
-                pbar.set_postfix({"best_exp": f"{best_exp:.2f}%", "done": len(rows)})
+            exp = rows[-1]["Expectancy [%]"]
+            if not math.isnan(exp) and exp > best_exp:
+                best_exp = exp
+            pbar.set_postfix({"best_exp": f"{best_exp:.2f}%", "done": len(rows)})
 
     pbar.close()
     return rows

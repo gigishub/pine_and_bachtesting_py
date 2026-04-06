@@ -137,6 +137,11 @@ class RobustnessConfigV4:
     feature_dependencies: dict[str, tuple[str, ...]] = field(
         default_factory=lambda: dict(DEFAULT_FEATURE_DEPENDENCIES)
     )
+    # After each condition completes, re-run the top N ranked combos and save their
+    # individual trade records to {output_dir}/trades/{condition}_trade_log.csv.
+    # Set save_trade_logs=False to skip (e.g. for very long runs where disk space matters).
+    save_trade_logs: bool = True
+    trade_logs_top_n: int = 5
 
     def build_baseline_params(self) -> dict[str, object]:
         """Convert StrategySettings dataclass → flat dict for backtest.run(**params)."""

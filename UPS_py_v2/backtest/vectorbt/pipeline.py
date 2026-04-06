@@ -45,9 +45,9 @@ from typing import Any, Callable
 
 import pandas as pd
 
-from ..backtest.robustness_v4.config import DatasetConfig, RobustnessConfigV4
-from ..data.fetch import load_ohlcv
-from ..strategy.strategy_parameters import StrategySettings
+from ..config.default_config import DatasetConfig, RobustnessConfigV4
+from ...data.fetch import load_ohlcv
+from ...strategy.strategy_parameters import StrategySettings
 from .metrics import extract_stats
 from .runner import run
 
@@ -138,6 +138,73 @@ def run_backtest_vbt(df: pd.DataFrame, params: dict[str, Any]) -> pd.Series:
     settings = StrategySettings(**params)
     pf = run(df, settings)
     return extract_stats(pf)
+
+
+def get_trade_log(
+    df: pd.DataFrame,
+    params: dict[str, Any],
+    *,
+    rank: int,
+    sig: str,
+    condition: str,
+    symbol: str,
+) -> pd.DataFrame:
+    """Re-run one parameter set and return its trade records as a tidy DataFrame.
+
+    Called by the sequencer for the top-N ranked combos after the grid is complete.
+    Each row is one closed trade.  Useful for post-run filter attribution:
+      e.g. filter by Parameter Signature to compare long-only vs short-only trades,
+      or group by Direction to see if longs or shorts are dragging performance.
+
+    Args:
+        df:        OHLCV data for this condition.
+        params:    Full parameter dict for this combo (as returned by the grid builder).
+        rank:      Rank of this combo in the condition results (1 = best).
+        sig:       Parameter signature string (used as a join key in analysis).
+        condition: Condition key, e.g. "BTC_1H" (added as a column for multi-condition CSVs).
+        symbol:    Symbol, e.g. "BTCUSDT".
+
+    Returns:
+        DataFrame with one row per trade.  Empty DataFrame if no trades were taken.
+    """
+    settings = StrategySettings(**params)
+    pf = run(df, settings)
+
+    try:
+        tlog = pf.trades.records_readable.copy()
+    except Exception:
+        return pd.DataFrame()
+
+    if tlog.empty:
+        return pd.DataFrame()
+
+    # Rename vbt column names → consistent snake_case labels used across both engines.
+    col_map = {
+        "Entry Timestamp":  "EntryTime",
+        "Exit Timestamp":   "ExitTime",
+        "Avg Entry Price":  "EntryPrice",
+        "Avg Exit Price":   "ExitPrice",
+        "Entry Fees":       "EntryFees",
+        "Exit Fees":        "ExitFees",
+        "Size":             "Size",
+        "PnL":              "PnL",
+        "Return":           "Return [%]",
+        "Direction":        "Direction",
+        "Status":           "Status",
+    }
+    available = [c for c in col_map if c in tlog.columns]
+    tlog = tlog[available].rename(columns=col_map)
+
+    # vbt Return is a fraction (0.015 = 1.5 %); convert to percent for readability.
+    if "Return [%]" in tlog.columns:
+        tlog["Return [%]"] = (tlog["Return [%]"] * 100).round(4)
+
+    # Prepend identity columns so the trade log is self-contained.
+    tlog.insert(0, "Condition",           condition)
+    tlog.insert(0, "Symbol",              symbol)
+    tlog.insert(0, "Rank",                rank)
+    tlog.insert(0, "Parameter Signature", sig)
+    return tlog.reset_index(drop=True)
 
 
 # ---------------------------------------------------------------------------

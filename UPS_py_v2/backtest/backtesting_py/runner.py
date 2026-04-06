@@ -17,7 +17,7 @@ import pandas as pd
 from backtesting.lib import FractionalBacktest
 
 from .strategy import UPSStrategy
-from ..strategy.strategy_parameters import StrategySettings
+from ...strategy.strategy_parameters import StrategySettings
 
 
 def _load_csv(path: str) -> pd.DataFrame:

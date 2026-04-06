@@ -1,19 +1,15 @@
 from __future__ import annotations
 
-try:
-    from .robustness_v4.simple_config import build_simple_config
-    from .robustness_v4.sequencer import run_sequential
-    from .robustness_v4.reporter import build_robustness_summary
-except ImportError:
-    from UPS_py_v2.backtest.robustness_v4.simple_config import build_simple_config
-    from UPS_py_v2.backtest.robustness_v4.sequencer import run_sequential
-    from UPS_py_v2.backtest.robustness_v4.reporter import build_robustness_summary
-
 import logging
 from pathlib import Path
 
+from ..config.simple_config import build_simple_config, build_output_dir
+from ..reporting.reporter import build_robustness_summary
+from .sequencer import run_sequential
+
 if __name__ == "__main__":
-    config = build_simple_config()
+    output_dir = build_output_dir("backtesting_py", "UPS")
+    config = build_simple_config(output_dir=output_dir)
 
     # Log to both terminal and a file inside the run's output directory.
     log_path = Path(config.output_dir) / "run.log"
@@ -26,7 +22,7 @@ if __name__ == "__main__":
         ],
     )
 
-    print(f"\nV4 Robustness Run")
+    print(f"\nBacktesting.py Robustness Run")
     print(f"  Symbols:    {', '.join(config.symbols)}")
     print(f"  Timeframes: {', '.join(config.timeframes)}")
     print(f"  Conditions: {len(config.build_datasets())}")
@@ -46,4 +42,4 @@ if __name__ == "__main__":
         print(summary[cols].head(10).to_string(index=False))
 
     print(f"\nFull summary saved to: {config.output_dir}/ROBUSTNESS_SUMMARY.csv")
-    print(f"Launch viewer: streamlit run UPS_py_v2/backtest/robustness_v4/streamlit_viewer.py")
+    print(f"Launch viewer: streamlit run UPS_py_v2/backtest/reporting/streamlit_viewer.py")

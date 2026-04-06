@@ -1,13 +1,13 @@
 """Entry-point for the vectorbt robustness run.
 
 Usage:
-  source .venv/bin/activate && python -m UPS_py_v2.vectorbt.run_robustness
+  source .venv/bin/activate && python -m UPS_py_v2.backtest.vectorbt.run
 
-Edit simple_config.py in backtest/robustness_v4/ to change symbols, timeframes
+Edit backtest/config/simple_config.py to change symbols, timeframes
 and parameter grid — the same config drives both engines.
 
 Results are saved to a timestamped subdirectory inside:
-  UPS_py_v2/backtest/robustness_v4/results/
+  UPS_py_v2/backtest/results/results_vbt/
 
 The robustness summary CSV is built by the shared reporter module after all
 conditions are complete.  Both engines write the same column format so you can
@@ -19,12 +19,13 @@ from __future__ import annotations
 import logging
 from pathlib import Path
 
-from ..backtest.robustness_v4.reporter import build_robustness_summary
-from ..backtest.robustness_v4.simple_config import build_simple_config
+from ..config.simple_config import build_simple_config, build_output_dir
+from ..reporting.reporter import build_robustness_summary
 from .sequencer import run_sequential
 
 if __name__ == "__main__":
-    config = build_simple_config()
+    output_dir = build_output_dir("vbt", "UPS")
+    config = build_simple_config(output_dir=output_dir)
 
     log_path = Path(config.output_dir) / "run_vbt.log"
     logging.basicConfig(
@@ -60,3 +61,4 @@ if __name__ == "__main__":
         print(summary[cols].head(10).to_string(index=False))
 
     print(f"\nFull summary saved to: {config.output_dir}/ROBUSTNESS_SUMMARY.csv")
+    print(f"Launch viewer: streamlit run UPS_py_v2/backtest/reporting/streamlit_viewer.py")

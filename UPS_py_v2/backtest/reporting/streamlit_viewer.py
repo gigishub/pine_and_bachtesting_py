@@ -2,14 +2,14 @@
 Streamlit dashboard for V4 robustness results.
 
 Launch with:
-    streamlit run UPS_py_v2/backtest/robustness_v4/streamlit_viewer.py
+    streamlit run UPS_py_v2/backtest/reporting/streamlit_viewer.py
 
 Or from the project root after running the sequencer:
-    streamlit run UPS_py_v2/backtest/robustness_v4/streamlit_viewer.py -- --results results/
+    streamlit run UPS_py_v2/backtest/reporting/streamlit_viewer.py
 """
 from __future__ import annotations
 
-import sys
+import re
 from pathlib import Path
 
 import pandas as pd
@@ -30,7 +30,55 @@ st.set_page_config(
 # ---------------------------------------------------------------------------
 
 SUMMARY_FILENAME = "ROBUSTNESS_SUMMARY.csv"
-DEFAULT_RESULTS_DIR = Path("results")
+
+# Results root is always relative to this file's location, regardless of cwd.
+_HERE = Path(__file__).parent
+_RESULTS_ROOT = _HERE.parent / "results"
+
+_ENGINE_DIRS: dict[str, str] = {
+    "results_vbt": "vbt",
+    "results_backtesting_py": "bpy",
+}
+
+_RUN_DIR_PATTERN = re.compile(r"^\d{4}-\d{2}-\d{2}_\d{4}")
+
+
+def _discover_runs() -> list[tuple[str, Path]]:
+    """Return all timestamped run directories across both engines, newest first.
+
+    Each entry is (display_label, path) where label is e.g. "[vbt] 2026-04-06_1501_UPS".
+    """
+    runs: list[tuple[str, Path]] = []
+    for dir_name, short in _ENGINE_DIRS.items():
+        engine_dir = _RESULTS_ROOT / dir_name
+        if not engine_dir.exists():
+            continue
+        for sub in engine_dir.iterdir():
+            if sub.is_dir() and _RUN_DIR_PATTERN.match(sub.name):
+                runs.append((f"[{short}] {sub.name}", sub))
+    # Sort newest first (YYYY-MM-DD_HHMM prefix sorts lexicographically).
+    runs.sort(key=lambda t: t[0], reverse=True)
+    return runs
+
+
+def _resolve_default_dir() -> Path:
+    """Return the most recent run directory, preferring the .current_run marker."""
+    # Check vbt marker first.
+    vbt_dir = _RESULTS_ROOT / "results_vbt"
+    marker = vbt_dir / ".current_run"
+    if marker.exists():
+        name = marker.read_text().strip()
+        candidate = vbt_dir / name
+        if candidate.exists():
+            return candidate
+
+    # Fall back to any discovered run (already sorted newest-first).
+    runs = _discover_runs()
+    if runs:
+        return runs[0][1]
+
+    # Last resort: old relative default.
+    return Path("results")
 
 
 @st.cache_data
@@ -63,12 +111,39 @@ def _metric_cols(df: pd.DataFrame) -> list[str]:
 
 
 # ---------------------------------------------------------------------------
-# Sidebar: results dir
+# Sidebar: run picker
 # ---------------------------------------------------------------------------
 
-st.sidebar.title("📂 Results directory")
-results_input = st.sidebar.text_input("Path", value=str(DEFAULT_RESULTS_DIR))
-results_dir = Path(results_input)
+st.sidebar.title("📂 Select run")
+
+discovered = _discover_runs()
+default_dir = _resolve_default_dir()
+
+if discovered:
+    # Build display list; pre-select whichever entry matches the default dir.
+    labels = [label for label, _ in discovered]
+    paths = [path for _, path in discovered]
+
+    default_index = 0
+    for i, p in enumerate(paths):
+        if p.resolve() == default_dir.resolve():
+            default_index = i
+            break
+
+    selected_label = st.sidebar.selectbox(
+        "Run directory",
+        options=labels,
+        index=default_index,
+    )
+    results_dir = paths[labels.index(selected_label)]
+else:
+    st.sidebar.info("No timestamped run directories found yet.")
+    results_dir = default_dir
+
+with st.sidebar.expander("⚙️ Custom path"):
+    custom_input = st.text_input("Override path", value="", placeholder=str(results_dir))
+    if custom_input.strip():
+        results_dir = Path(custom_input.strip())
 
 if not results_dir.exists():
     st.error(f"Directory not found: `{results_dir}`")

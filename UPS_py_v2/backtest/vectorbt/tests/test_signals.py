@@ -12,7 +12,7 @@ import pytest
 
 from UPS_py_v2.strategy.risk.sl_tp import compute_long_stop, compute_short_stop, compute_long_target
 from UPS_py_v2.strategy.strategy_parameters import StrategySettings
-from UPS_py_v2.vectorbt.signals import build_vbt_arrays
+from UPS_py_v2.backtest.vectorbt.signals import build_vbt_arrays
 
 
 def _make_ohlcv(n: int = 300, seed: int = 42) -> pd.DataFrame:
