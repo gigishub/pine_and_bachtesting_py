@@ -67,17 +67,21 @@ def build_simple_config() -> RobustnessConfigV4:
     # Each symbol × timeframe pair becomes one condition (one CSV file).
     # E.g. ["BTCUSDT", "ETHUSDT"] × ["1h", "4h"] → BTC_1H, BTC_4H, ETH_1H, ETH_4H
     # Top 10 pairs by market cap on Bybit (excluding stablecoins)
-    symbols = ["BTCUSDT", "ETHUSDT", "XRPUSDT", "BNBUSDT", "SOLUSDT", 
-               "TRXUSDT", "DOGEUSDT", "ADAUSDT", "AVAXUSDT", "LINKUSDT"]
-    timeframes = ["1h", "4h"]
+    # symbols = ["BTCUSDT", "ETHUSDT", "XRPUSDT", "BNBUSDT", "SOLUSDT", 
+    #            "TRXUSDT", "DOGEUSDT", "ADAUSDT", "AVAXUSDT", "LINKUSDT"]
+    # timeframes = ["1h", "4h"]
+    symbols = ["BTCUSDT"]
+    timeframes = ["1h",]
 
     config = RobustnessConfigV4(
         source="bybit",
         market_type="futures",
         symbols=symbols,
         timeframes=timeframes,
-        start_time="2020-11-01 00:00:00",
-        end_time="2025-12-31 23:59:59",
+        # start_time="2020-11-01 00:00:00",
+        # end_time="2025-12-31 23:59:59",
+        start_time="2026-03-01 00:00:00",
+        end_time=None,
         min_bars=150,           # skip conditions with fewer bars (avoids meaningless stats)
         consistency_top_n=20,   # a setup "appears" in a condition if its Rank <= this value
         output_dir=output_dir,
