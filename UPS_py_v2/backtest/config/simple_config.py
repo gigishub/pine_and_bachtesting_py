@@ -86,7 +86,7 @@ def build_simple_config(output_dir: Path | None = None) -> RobustnessConfigV4:
         market_type="futures",
         symbols=symbols,
         timeframes=timeframes,
-        start_time="2020-11-01 00:00:00",
+        start_time="2023-05-01 00:00:00",
         end_time="2025-10-31 23:59:59",
         # start_time="2021-01-01 00:00:00",
         # end_time=None,
@@ -115,7 +115,7 @@ def build_simple_config(output_dir: Path | None = None) -> RobustnessConfigV4:
 
     # --- Core grid: risk:reward values to test ---
     # More values = larger grid. Start with 3–4 well-spaced values.
-    config.set_risk_reward_range(1.0, 1.5, 2.0, 3.0)
+    config.set_risk_reward_range(1.0, 1.8, 2.7)
 
     # --- Optional: sweep numeric parameters ---
     # Uncomment to expand the search space for specific parameters.

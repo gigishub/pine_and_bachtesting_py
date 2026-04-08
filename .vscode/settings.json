@@ -8,4 +8,10 @@
             "matchCommandLine": true
         }
     }
+    ,
+    "oaicopilot.baseUrl": "https://api.deepseek.com/v1",
+    "oaicopilot.models": [
+        { "id": "deepseek-chat", "name": "DeepSeek V3" },
+        { "id": "deepseek-reasoner", "name": "DeepSeek R1" }
+    ]
 }

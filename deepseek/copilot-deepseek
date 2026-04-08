@@ -1,0 +1,23 @@
+#!/bin/bash
+# Custom Copilot script that uses DeepSeek
+# Usage: ./copilot-deepseek [args]  or  copilot-deepseek [args]
+
+# Check if API key is set
+if [ -z "$DEEPSEEK_API_KEY" ]; then
+    echo "⚠️  DEEPSEEK_API_KEY not set. Using default GitHub models."
+    echo "To use DeepSeek, set your API key:"
+    echo "  export DEEPSEEK_API_KEY=\"sk-your-key\""
+    echo "Or add to ~/.zshrc for permanent setup."
+    echo ""
+    echo "Falling back to default Copilot CLI..."
+    copilot "$@"
+    exit $?
+fi
+
+# Use DeepSeek
+echo "🔷 Using DeepSeek (deepseek-chat)"
+COPILOT_PROVIDER_BASE_URL="https://api.deepseek.com/v1" \
+COPILOT_PROVIDER_TYPE="openai" \
+COPILOT_PROVIDER_API_KEY="$DEEPSEEK_API_KEY" \
+COPILOT_MODEL="deepseek-chat" \
+copilot "$@"
