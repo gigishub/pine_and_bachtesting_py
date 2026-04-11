@@ -1,10 +1,17 @@
 from __future__ import annotations
 
+import logging
 import time
 from datetime import datetime, timezone
 
 import pandas as pd
 import requests
+
+logger = logging.getLogger(__name__)
+
+_RATE_LIMIT_CODE = 10006
+_MAX_RETRIES = 5
+_RETRY_BACKOFF_BASE = 2.0  # seconds; doubles each attempt
 
 
 def _parse_ts(value: str) -> int:
@@ -73,7 +80,7 @@ def fetch_bybit_candles_chunk(
     start_time: str | None = None,
     end_time: str | None = None,
 ):
-    time.sleep(0.2)
+    time.sleep(0.25)
     interval = _to_bybit_interval(timeframe)
     url = _to_bybit_base_url(market_type)
     symbol_norm = _normalize_symbol(symbol)
@@ -89,18 +96,34 @@ def fetch_bybit_candles_chunk(
     if end_time is not None:
         params["end"] = _parse_ts(end_time)
 
-    resp = requests.get(url, params=params, timeout=10)
-    resp.raise_for_status()
-    data = resp.json()
+    for attempt in range(_MAX_RETRIES):
+        resp = requests.get(url, params=params, timeout=10)
+        resp.raise_for_status()
+        data = resp.json()
 
-    if data.get("ret_code") not in (0, None):
-        raise RuntimeError(f"Bybit API error: {data}")
+        ret_code = data.get("retCode") or data.get("ret_code")
 
-    result = data.get("result", {})
-    payload = result.get("list") if isinstance(result, dict) else result
-    if payload is None:
-        raise RuntimeError(f"Bybit returned no result: {data}")
-    return payload
+        if ret_code == _RATE_LIMIT_CODE:
+            wait = _RETRY_BACKOFF_BASE * (2 ** attempt)
+            logger.warning(
+                "Bybit rate limit hit for %s (attempt %d/%d). Waiting %.1fs.",
+                symbol_norm, attempt + 1, _MAX_RETRIES, wait,
+            )
+            time.sleep(wait)
+            continue
+
+        if ret_code not in (0, None):
+            raise RuntimeError(f"Bybit API error: {data}")
+
+        result = data.get("result", {})
+        payload = result.get("list") if isinstance(result, dict) else result
+        if payload is None:
+            raise RuntimeError(f"Bybit returned no result: {data}")
+        return payload
+
+    raise RuntimeError(
+        f"Bybit rate limit not resolved after {_MAX_RETRIES} retries for {symbol_norm}"
+    )
 
 
 def fetch_all_bybit_candles(

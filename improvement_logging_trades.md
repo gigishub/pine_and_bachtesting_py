@@ -1,1 +1,0 @@
-Mergring script need to be seperated in concerns to big 
