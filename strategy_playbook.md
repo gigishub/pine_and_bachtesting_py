@@ -55,14 +55,13 @@ Steps at a glance:
 | Check | Target |
 |-------|--------|
 | Trades fired | > 0 |
-| Exposure time | 5–40% |
-| Win rate | 25–45% (trend-following) |
+| Exposure time | exists |
 | Entry prices | Within bar OHLC range (no lookahead) |
 | Stop movement | Only moves in the favourable direction, never loosens |
 
 **Checklist**
 - [ ] Directory structure matches the module template
-- [ ] All 4 indicator files written and tested
+- [ ] All indicator files written and tested
 - [ ] Tests pass (indicators, decision, signals)
 - [ ] Backtest fires trades and passes behavioural validation
 
@@ -139,6 +138,8 @@ python -m strategy_evaluation <short_results_dir> <long_results_dir> --label <St
 streamlit run strategy_evaluation/streamlit_app.py
 ```
 
+→ *How to read every section of the report: `strategy_conversion/04_reading_and_refining_results.md`*
+
 **What the report tells you**
 
 | Metric | What it measures | Target |
@@ -164,7 +165,7 @@ streamlit run strategy_evaluation/streamlit_app.py
 
 **Goal:** Use the robustness report to decide what to improve next, then loop back through the relevant earlier phase.
 
-The top toggle frequency table is the most useful signal. Flags that appear in nearly every top combo are core to the strategy's edge. Flags that appear rarely (or never) may not be adding value and could be removed or replaced.
+The robustness report contains four analytical lenses (Toggle Frequency, RandomForest importance, SHAP impact, OLS significance). They must be read together — each one alone is misleading. The decision matrix in `strategy_conversion/04_reading_and_refining_results.md` maps every signal pattern to a concrete action.
 
 **Common refinement actions**
 
@@ -175,7 +176,9 @@ The top toggle frequency table is the most useful signal. Flags that appear in n
 | One flag dominates top combos | Pin that flag to `True` in `simple_config.py`; remove its alternative |
 | No flag pattern visible | The strategy may not have a consistent edge — revisit Phase 0 |
 
-After making changes, re-run Phase 3 (grid search) and Phase 4 (robustness evaluation). Repeat until the verdict is Robust or you decide the strategy needs a different concept.
+After making changes, re-run Phase 3 (grid search) and Phase 4 (robustness evaluation). Make exactly one change per iteration so you can attribute the effect. Repeat until the verdict is Robust or you decide the strategy needs a different concept.
+
+When toggle decisions are stable, switch from toggle changes to numerical parameter sweep. See Section 5 of `strategy_conversion/04_reading_and_refining_results.md` for the sweep workflow.
 
 **Checklist**
 - [ ] Top toggle frequency reviewed

@@ -24,6 +24,9 @@ def _row(**kwargs: object) -> pd.Series:
         "Win Rate [%]": 40.0,
         "Sharpe Ratio": 0.8,
         "Return [%]": 25.0,
+        "Max Drawdown [%]": 15.0,
+        "Expectancy": 1.5,
+        "Calmar Ratio": 2.0,
     }
     defaults.update(kwargs)
     return pd.Series(defaults)
@@ -45,6 +48,15 @@ class TestPassesThresholds:
     def test_fails_on_nan_sqn(self, cfg: RobustnessConfig) -> None:
         assert passes_thresholds(_row(SQN=float("nan")), cfg) is False
 
+    def test_fails_on_high_drawdown(self, cfg: RobustnessConfig) -> None:
+        assert passes_thresholds(_row(**{"Max Drawdown [%]": 50.0}), cfg) is False
+
+    def test_passes_when_drawdown_column_missing(self, cfg: RobustnessConfig) -> None:
+        """Backward compat: no drawdown column → drawdown gate is skipped."""
+        row = _row()
+        row = row.drop("Max Drawdown [%]")
+        assert passes_thresholds(row, cfg) is True
+
     def test_fails_on_zero_trades(self, cfg: RobustnessConfig) -> None:
         assert passes_thresholds(_row(**{"# Trades": 0}), cfg) is False
 
@@ -55,9 +67,26 @@ class TestScoreCombo:
         assert 0.0 <= score <= 1.0
 
     def test_better_row_scores_higher(self, cfg: RobustnessConfig) -> None:
-        good = score_combo(_row(SQN=2.5, **{"Profit Factor": 3.5, "Sharpe Ratio": 1.5}), cfg)
-        bad = score_combo(_row(SQN=0.2, **{"Profit Factor": 1.1, "Sharpe Ratio": 0.1}), cfg)
+        good = score_combo(_row(SQN=2.5, **{
+            "Profit Factor": 3.5, "Sharpe Ratio": 1.5,
+            "Expectancy": 4.0, "Max Drawdown [%]": 5.0, "Calmar Ratio": 4.5,
+        }), cfg)
+        bad = score_combo(_row(SQN=0.2, **{
+            "Profit Factor": 1.1, "Sharpe Ratio": 0.1,
+            "Expectancy": 0.1, "Max Drawdown [%]": 55.0, "Calmar Ratio": 0.1,
+        }), cfg)
         assert good > bad
+
+    def test_high_drawdown_lowers_score(self, cfg: RobustnessConfig) -> None:
+        low_dd  = score_combo(_row(**{"Max Drawdown [%]": 5.0}),  cfg)
+        high_dd = score_combo(_row(**{"Max Drawdown [%]": 55.0}), cfg)
+        assert low_dd > high_dd
+
+    def test_drawdown_above_ceiling_clips_to_zero(self, cfg: RobustnessConfig) -> None:
+        """DD ≥ 60% should contribute 0 to the max_drawdown component."""
+        extreme = score_combo(_row(**{"Max Drawdown [%]": 90.0}), cfg)
+        at_ceil = score_combo(_row(**{"Max Drawdown [%]": 60.0}), cfg)
+        assert extreme == pytest.approx(at_ceil)
 
     def test_nan_scores_zero_for_component(self, cfg: RobustnessConfig) -> None:
         score = score_combo(_row(SQN=float("nan")), cfg)

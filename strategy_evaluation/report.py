@@ -146,8 +146,9 @@ def format_report(
         )
         display_cols = [
             "Symbol", "Timeframe", "Parameter Signature",
-            "_score", "SQN", "Profit Factor", "# Trades",
-            "Win Rate [%]", "Sharpe Ratio", "Return [%]",
+            "_score", "SQN", "Profit Factor", "Expectancy",
+            "# Trades", "Win Rate [%]", "Sharpe Ratio",
+            "Max Drawdown [%]", "Calmar Ratio", "Return [%]",
         ]
         cols = [c for c in display_cols if c in top_combos.columns]
         sorted_df = top_combos[cols].sort_values("_score", ascending=False).reset_index(drop=True)

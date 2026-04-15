@@ -16,7 +16,37 @@ from pathlib import Path
 
 import pandas as pd
 
+from strategy_evaluation.config import RobustnessConfig
+
 logger = logging.getLogger(__name__)
+
+
+def validate_columns(df: pd.DataFrame, cfg: RobustnessConfig) -> dict[str, bool]:
+    """Check that *df* contains the columns the evaluation pipeline expects.
+
+    Required columns produce a WARNING when absent (analysis will degrade or
+    fail).  Optional columns produce an INFO message when absent (analysis
+    continues with graceful fallback).
+
+    Returns a mapping of column name → present (bool).
+    """
+    required = {
+        cfg.col_sqn, cfg.col_pf, cfg.col_trades,
+        cfg.col_win_rate, cfg.col_sharpe, cfg.col_return,
+    }
+    optional = {cfg.col_max_drawdown, cfg.col_expectancy, cfg.col_calmar}
+
+    present: dict[str, bool] = {}
+    for col in sorted(required | optional):
+        found = col in df.columns
+        present[col] = found
+        if not found:
+            if col in required:
+                logger.warning("Required column missing from results CSV: '%s'", col)
+            else:
+                logger.info("Optional column not in results CSV (skipped): '%s'", col)
+
+    return present
 
 
 def load_run_dir(run_dir: str | Path) -> pd.DataFrame:

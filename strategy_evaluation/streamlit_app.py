@@ -25,7 +25,7 @@ from strategy_evaluation.importance import (
     compute_shap_importance,
     compute_toggle_importance,
 )
-from strategy_evaluation.loader import load_data_period, load_run_dir
+from strategy_evaluation.loader import load_data_period, load_run_dir, validate_columns
 from strategy_evaluation.metrics import annotate_dataframe
 from strategy_evaluation.report import format_report, save_report
 from strategy_evaluation.scorer import RobustnessResult, aggregate_verdict
@@ -267,8 +267,9 @@ def _section_top_combos(df: pd.DataFrame, cfg: RobustnessConfig) -> None:
 
     show_cols = [
         cfg.col_symbol, cfg.col_timeframe, cfg.col_param_sig, "_score",
-        cfg.col_sqn, cfg.col_pf, cfg.col_trades, cfg.col_win_rate,
-        cfg.col_sharpe, cfg.col_return,
+        cfg.col_sqn, cfg.col_pf, cfg.col_expectancy,
+        cfg.col_trades, cfg.col_win_rate, cfg.col_sharpe,
+        cfg.col_max_drawdown, cfg.col_calmar, cfg.col_return,
     ]
     available = [c for c in show_cols if c in view.columns]
     sort_col  = "_score" if "_score" in view.columns else available[0]
@@ -307,6 +308,9 @@ with st.sidebar:
     min_sharpe   = st.slider("Min Sharpe",         0.0,  2.0,  0.5,  0.05,
         help="Risk-adjusted return (return ÷ volatility). 0.5 = acceptable; "
              "≥1.0 = good; ≥2.0 = exceptional.")
+    max_max_dd   = st.slider("Max Drawdown (%)",   10.0, 80.0, 40.0, 1.0,
+        help="Maximum allowed peak-to-trough equity drawdown. "
+             "Combos that exceed this are excluded regardless of other metrics.")
 
     run_btn = st.button("\u25b6 Run analysis", type="primary", use_container_width=True)
 
@@ -332,6 +336,7 @@ cfg = RobustnessConfig(
     min_trades=int(min_trades),
     min_win_rate=min_win_rate,
     min_sharpe=min_sharpe,
+    max_max_drawdown=max_max_dd,
 )
 
 with st.spinner("Loading backtest results\u2026"):
@@ -340,6 +345,22 @@ with st.spinner("Loading backtest results\u2026"):
     except Exception as exc:
         st.error(f"Failed to load results directory: {exc}")
         st.stop()
+
+col_status = validate_columns(df, cfg)
+missing_required = [c for c, ok in col_status.items() if not ok and c in {
+    cfg.col_sqn, cfg.col_pf, cfg.col_trades, cfg.col_win_rate,
+    cfg.col_sharpe, cfg.col_return,
+}]
+missing_optional = [c for c, ok in col_status.items() if not ok and c in {
+    cfg.col_max_drawdown, cfg.col_expectancy, cfg.col_calmar,
+}]
+if missing_required:
+    st.error(f"Required columns missing from CSV — analysis may be incorrect: {missing_required}")
+if missing_optional:
+    st.info(
+        f"Optional columns not found in CSV (scoring will fall back to 0 for those components): "
+        f"{missing_optional}"
+    )
 
 sym_rates = symbol_pass_rate(df, cfg)
 tf_rates  = timeframe_pass_rate(df, cfg)
@@ -398,13 +419,14 @@ st.subheader("7. Top Passing Combos")
 _section_top_combos(df, cfg)
 
 # ── Auto-save report ──────────────────────────────────────────────────────────
-_threshold_tag = f"sqn{min_sqn}_pf{min_pf}_trades{min_trades}"
+_threshold_tag = f"sqn{min_sqn}_pf{min_pf}_trades{min_trades}_dd{max_max_dd}"
 _thresholds = {
-    "Min SQN":          (min_sqn,      "System Quality Number — consistency of returns. 1.0 = minimum viable; ≥2.0 = excellent."),
-    "Min Profit Factor":(min_pf,       "Gross profit ÷ gross loss. 1.5 = earn $1.50 per $1 lost. Below 1.0 = net loser."),
-    "Min # Trades":     (min_trades,   "Minimum trades per combo — filters out statistically meaningless results."),
-    "Min Win Rate (%)": (min_win_rate, "% of trades that close in profit. Low is OK if winners are much larger than losers."),
-    "Min Sharpe":       (min_sharpe,   "Risk-adjusted return. 0.5 = acceptable; ≥1.0 = good; ≥2.0 = exceptional."),
+    "Min SQN":            (min_sqn,      "System Quality Number — consistency of returns. 1.0 = minimum viable; ≥2.0 = excellent."),
+    "Min Profit Factor":  (min_pf,       "Gross profit ÷ gross loss. 1.5 = earn $1.50 per $1 lost. Below 1.0 = net loser."),
+    "Min # Trades":       (min_trades,   "Minimum trades per combo — filters out statistically meaningless results."),
+    "Min Win Rate (%)":   (min_win_rate, "% of trades that close in profit. Low is OK if winners are much larger than losers."),
+    "Min Sharpe":         (min_sharpe,   "Risk-adjusted return. 0.5 = acceptable; ≥1.0 = good; ≥2.0 = exceptional."),
+    "Max Drawdown (%)":   (max_max_dd,   "Maximum peak-to-trough equity drop allowed. Combos above this are excluded."),
 }
 report_str = format_report(
     result,

@@ -17,6 +17,8 @@ class RobustnessConfig:
     min_trades: int = 10
     min_win_rate: float = 30.0   # percent
     min_sharpe: float = 0.5
+    # Max drawdown gate — only applied when the column is present in the data.
+    max_max_drawdown: float = 40.0   # percent
 
     # ── Decay detection ────────────────────────────────────────────────────
     # Flag a symbol/TF if SQN or Return drops by more than this fraction
@@ -32,12 +34,14 @@ class RobustnessConfig:
     weak_avg_sqn: float = 0.5
 
     # ── Scoring weights (must sum to 1.0) ──────────────────────────────────
+    # win_rate and trades are pass/fail gates only — not in the composite score.
     weights: dict[str, float] = field(default_factory=lambda: {
-        "sqn": 0.30,
-        "profit_factor": 0.25,
-        "sharpe": 0.20,
-        "win_rate": 0.15,
-        "trades": 0.10,
+        "sqn":            0.28,
+        "profit_factor":  0.22,
+        "expectancy":     0.18,
+        "sharpe":         0.15,
+        "max_drawdown":   0.12,  # inverted: lower DD scores higher
+        "calmar":         0.05,
     })
 
     # ── Column name mapping (VBT schema) ───────────────────────────────────
@@ -47,6 +51,9 @@ class RobustnessConfig:
     col_win_rate: str = "Win Rate [%]"
     col_sharpe: str = "Sharpe Ratio"
     col_return: str = "Return [%]"
+    col_max_drawdown: str = "Max Drawdown [%]"
+    col_expectancy: str = "Expectancy"
+    col_calmar: str = "Calmar Ratio"
     col_symbol: str = "Symbol"
     col_timeframe: str = "Timeframe"
     col_param_sig: str = "Parameter Signature"
