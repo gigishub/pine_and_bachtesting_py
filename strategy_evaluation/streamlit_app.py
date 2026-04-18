@@ -13,12 +13,14 @@ from pathlib import Path
 # regardless of the working directory when `streamlit run` is invoked.
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
+import math
 import pandas as pd
+import numpy as np
 import plotly.express as px
 import streamlit as st
 
 from strategy_evaluation.config import RobustnessConfig
-from strategy_evaluation.consistency import symbol_pass_rate, timeframe_pass_rate, toggle_frequency
+from strategy_evaluation.consistency import symbol_pass_rate, timeframe_pass_rate, toggle_frequency, sweep_threshold, compute_toggle_consensus
 from strategy_evaluation.importance import (
     ImportanceResult,
     ShapResult,
@@ -63,61 +65,152 @@ def _verdict_banner(result: RobustnessResult) -> None:
 
 # ── Section renderers ─────────────────────────────────────────────────────────
 
-def _section_symbol_consistency(result: RobustnessResult, cfg: RobustnessConfig) -> None:
+def _section_overall_symbol(cfg: RobustnessConfig, df: pd.DataFrame) -> None:
+    """Section 1 — overall combo pass rate per coin across ALL timeframes combined."""
+    n_total      = len(df)
+    n_symbols    = df[cfg.col_symbol].nunique()
+    n_tfs        = df[cfg.col_timeframe].nunique()
+    n_params     = n_total // (n_symbols * n_tfs) if (n_symbols * n_tfs) else 0
+    n_per_coin   = n_total // n_symbols if n_symbols else 0
+    floor        = cfg.min_combo_pass_rate
+
     _info(
-        "**What this shows:** The fraction of toggle combinations that pass all thresholds "
-        "for each coin.\n\n"
-        "**How to use it:** A robust strategy should pass on most coins, not just one or two. "
-        "If only 2 of 10 coins pass, the strategy may be specific to those coins and unlikely "
-        "to generalise. Aim for at least 6 of 10 \u2705.\n\n"
-        "**The dashed threshold line** shows the minimum pass rate you set (default 60%)."
+        f"**{n_total:,} total combos split across {n_symbols} coins → {n_per_coin} combos per coin**  \n"
+        f"({n_tfs} timeframes × {n_params} parameter sets per coin)\n\n"
+        f"**Bar height** = fraction of those {n_per_coin} combos that pass all thresholds.  \n"
+        f"**100%** = every combo works on every TF.  **0%** = no combo works on any TF — skip that coin.\n\n"
+        f"**Floor line:** ≥ **{floor:.0%}** of combos must pass → ✅ Pass   |   Below → ❌ Fail"
     )
-    rows = [{"Symbol": sym, "Pass rate": rate} for sym, rate in sorted(result.symbol_pass_rates.items())]
-    df_sym = pd.DataFrame(rows)
+
+    combo_rates = (
+        df.groupby(cfg.col_symbol)["_passes"].mean()
+        if "_passes" in df.columns
+        else pd.Series(dtype=float)
+    )
+    rows = [
+        {"Symbol": sym, "Combo pass rate": float(combo_rates.get(sym, 0))}
+        for sym in sorted(combo_rates.index)
+    ]
+    df_plot = pd.DataFrame(rows)
+    df_plot["Status"] = df_plot["Combo pass rate"].apply(
+        lambda r: "✅ Pass" if r >= floor else "❌ Fail"
+    )
+
     fig = px.bar(
-        df_sym, x="Symbol", y="Pass rate",
-        color="Pass rate",
-        color_continuous_scale=["#e74c3c", "#f39c12", "#2ecc71"],
-        range_color=[0, 1],
-        title="Pass rate per symbol (fraction of timeframes where \u22651 combo passes)",
+        df_plot, x="Symbol", y="Combo pass rate",
+        color="Status",
+        color_discrete_map={"✅ Pass": "#2ecc71", "❌ Fail": "#e74c3c"},
+        title=f"Overall combo pass rate per coin  (all {n_tfs} TFs combined)",
+        labels={"Combo pass rate": f"Pass rate  (100% = {n_per_coin} combos)"},
     )
     fig.add_hline(
-        y=cfg.robust_symbol_rate, line_dash="dash", line_color="white",
-        annotation_text="Threshold", annotation_position="top right",
+        y=floor, line_dash="dash", line_color="white",
+        annotation_text=f"Floor ({floor:.0%})", annotation_position="top right",
     )
-    fig.update_layout(coloraxis_showscale=False, yaxis_range=[0, 1.05])
+    fig.update_layout(yaxis_range=[0, 1.05], yaxis_tickformat=".0%", showlegend=True)
     st.plotly_chart(fig, use_container_width=True)
 
-    passing = sum(1 for v in result.symbol_pass_rates.values() if v > 0)
-    c1, c2, c3 = st.columns(3)
-    c1.metric("Symbols passing", f"{passing} / {len(result.symbol_pass_rates)}")
-    c2.metric("Symbol pass rate", f"{result.symbol_rate:.0%}")
-    c3.metric("Threshold", f"{cfg.robust_symbol_rate:.0%}")
 
+def _section_per_tf_charts(cfg: RobustnessConfig, df: pd.DataFrame) -> None:
+    """Section 2 — one bar chart per tested timeframe + coverage summary."""
+    from collections import defaultdict
 
-def _section_tf_consistency(result: RobustnessResult, cfg: RobustnessConfig) -> None:
+    n_total          = len(df)
+    n_symbols        = df[cfg.col_symbol].nunique()
+    n_tfs            = df[cfg.col_timeframe].nunique()
+    n_params         = n_total // (n_symbols * n_tfs) if (n_symbols * n_tfs) else 0
+    n_per_tf         = n_total // n_tfs if n_tfs else 0
+    n_per_coin_per_tf = n_per_tf // n_symbols if n_symbols else 0
+    floor            = cfg.min_combo_pass_rate
+    col_sym          = cfg.col_symbol
+    col_tf           = cfg.col_timeframe
+
     _info(
-        "**What this shows:** For each timeframe (1H, 4H, 1D) the fraction of symbols where "
-        "at least one combo passes thresholds.\n\n"
-        "**How to use it:** A strategy that only works on the 1H but not 4H or 1D may be "
-        "curve-fitted to short-term noise. A robust strategy should work across at least two "
-        "timeframes. The bar should be above the dashed threshold line."
+        f"**Same {n_total:,} combos — now split by timeframe:** {n_per_tf:,} combos per TF  \n"
+        f"= {n_symbols} coins × {n_params} parameter sets\n\n"
+        f"**Each chart below = one timeframe.** Bar = fraction of the coin's  \n"
+        f"{n_per_coin_per_tf} combos on THAT timeframe that pass all thresholds.  \n"
+        f"**100%** = all {n_per_coin_per_tf} combos pass.  **0%** = none pass on this TF.\n\n"
+        f"Use these charts to find which (coin, TF) pairs actually work."
     )
-    rows = [{"Timeframe": tf, "Pass rate": rate} for tf, rate in sorted(result.tf_pass_rates.items())]
-    df_tf = pd.DataFrame(rows)
-    fig = px.bar(
-        df_tf, x="Timeframe", y="Pass rate",
-        color="Pass rate",
-        color_continuous_scale=["#e74c3c", "#f39c12", "#2ecc71"],
-        range_color=[0, 1],
-        title="Pass rate per timeframe (fraction of symbols where \u22651 combo passes)",
-    )
-    fig.add_hline(
-        y=cfg.robust_tf_rate, line_dash="dash", line_color="white",
-        annotation_text="Threshold", annotation_position="top right",
-    )
-    fig.update_layout(coloraxis_showscale=False, yaxis_range=[0, 1.05])
-    st.plotly_chart(fig, use_container_width=True)
+
+    timeframes = sorted(df[col_tf].unique())
+    all_symbols = sorted(df[col_sym].unique())
+    # coin → list of TFs it passes
+    coin_tf_pass: dict[str, list[str]] = {sym: [] for sym in all_symbols}
+
+    for tf in timeframes:
+        tf_df      = df[df[col_tf] == tf]
+        coin_rates = (
+            tf_df.groupby(col_sym)["_passes"].mean()
+            if "_passes" in tf_df.columns
+            else pd.Series(dtype=float)
+        )
+        n_pass = int((coin_rates >= floor).sum())
+
+        rows = [
+            {"Symbol": sym, "Combo pass rate": float(coin_rates.get(sym, 0))}
+            for sym in all_symbols
+        ]
+        df_plot = pd.DataFrame(rows)
+        df_plot["Status"] = df_plot["Combo pass rate"].apply(
+            lambda r: "✅ Pass" if r >= floor else "❌ Fail"
+        )
+
+        st.markdown(f"##### TF: {tf}")
+        fig = px.bar(
+            df_plot, x="Symbol", y="Combo pass rate",
+            color="Status",
+            color_discrete_map={"✅ Pass": "#2ecc71", "❌ Fail": "#e74c3c"},
+            title=f"{tf} — combo pass rate per coin",
+            labels={"Combo pass rate": f"Pass rate  (100% = {n_per_coin_per_tf} combos)"},
+        )
+        fig.add_hline(
+            y=floor, line_dash="dash", line_color="white",
+            annotation_text=f"Floor ({floor:.0%})", annotation_position="top right",
+        )
+        fig.update_layout(yaxis_range=[0, 1.05], yaxis_tickformat=".0%", showlegend=True)
+        st.plotly_chart(fig, use_container_width=True)
+        st.caption(f"**{tf}:** {n_pass} of {n_symbols} coins pass the {floor:.0%} floor")
+
+        for sym in all_symbols:
+            if coin_rates.get(sym, 0) >= floor:
+                coin_tf_pass[sym].append(str(tf))
+
+    # ── Coverage Summary ────────────────────────────────────────────────────────
+    st.markdown("---")
+    st.markdown("**📊 TF Coverage per coin** — which timeframes does each coin pass?")
+
+    coverage_rows = []
+    for sym in all_symbols:
+        passing_tfs = coin_tf_pass[sym]
+        n = len(passing_tfs)
+        if n == n_tfs:
+            verdict = f"✅ All {n_tfs} TFs"
+        elif n == 0:
+            verdict = "❌ None"
+        else:
+            verdict = f"⚠️ {n}/{n_tfs}"
+        coverage_rows.append({
+            "Coin":        sym,
+            "Passing TFs": ", ".join(passing_tfs) if passing_tfs else "—",
+            "Count":       f"{n}/{n_tfs}",
+            "Verdict":     verdict,
+        })
+    st.dataframe(pd.DataFrame(coverage_rows), use_container_width=True, hide_index=True)
+
+    by_count: dict[int, list[str]] = defaultdict(list)
+    for sym in all_symbols:
+        by_count[len(coin_tf_pass[sym])].append(sym)
+
+    for count in sorted(by_count.keys(), reverse=True):
+        group = sorted(by_count[count])
+        if count == n_tfs:
+            st.caption(f"✅ {len(group)} coin(s) pass all {n_tfs} TFs — strongest candidates: {', '.join(group)}")
+        elif count == 0:
+            st.caption(f"❌ {len(group)} coin(s) pass 0 TFs — skip entirely: {', '.join(group)}")
+        else:
+            st.caption(f"⚠️ {len(group)} coin(s) pass {count}/{n_tfs} TFs — timeframe-specific: {', '.join(group)}")
 
 
 def _section_toggle_frequency(result: RobustnessResult) -> None:
@@ -143,6 +236,48 @@ def _section_toggle_frequency(result: RobustnessResult) -> None:
     )
     fig.update_layout(yaxis={"categoryorder": "total ascending"}, coloraxis_showscale=False)
     st.plotly_chart(fig, use_container_width=True)
+
+
+
+def _section_toggle_consensus(tc_df: pd.DataFrame) -> None:
+    _info(
+        "**What this shows:** A cross-check of all three toggle signals in one table.\n\n"
+        "- **Freq (top combos)** \u2014 how often this toggle appears in the top-5 passing combos "
+        "per symbol/timeframe *(threshold-sensitive)*.\n"
+        "- **OLS Coeff** \u2014 average change in SQN when toggle is ON across *all* combos. "
+        "Positive = helps. \u2705 = statistically significant (p < 0.05).\n"
+        "- **SHAP Mean** \u2014 signed mean SHAP when toggle is ON. Positive = raises SQN.\n\n"
+        "**Verdicts:**\n"
+        "- \u2705 **Keep ON** \u2014 all three signals agree the toggle helps.\n"
+        "- \u274c **Remove** \u2014 all three signals agree the toggle hurts.\n"
+        "- \u26a0\ufe0f **Conflict** \u2014 frequency and OLS/SHAP disagree. The toggle may be present "
+        "incidentally in passing combos but not actually driving performance.\n"
+        "- \u2014 **Neutral** \u2014 insufficient signal to make a recommendation."
+    )
+    if tc_df.empty:
+        st.info("No passing combos found \u2014 consensus unavailable.")
+        return
+    display = tc_df.copy()
+    display["freq_pct"] = display["freq_pct"].map(lambda x: f"{x:.0%}")
+    display["ols_coeff"] = display["ols_coeff"].map(
+        lambda x: f"{x:+.4f}" if pd.notna(x) else "\u2014"
+    )
+    display["shap_mean"] = display["shap_mean"].map(
+        lambda x: f"{x:+.3f}" if pd.notna(x) else "\u2014"
+    )
+    display["ols_sig"] = display["ols_sig"].map(
+        lambda x: "\u2705 Yes" if x else "\u26a0\ufe0f No"
+    )
+    display = display.rename(columns={
+        "toggle": "Toggle",
+        "freq_pct": "Freq (top combos)",
+        "ols_coeff": "OLS Coeff",
+        "ols_p": "OLS p-value",
+        "ols_sig": "OLS Sig",
+        "shap_mean": "SHAP Mean",
+        "consensus": "Consensus",
+    })
+    st.dataframe(display, use_container_width=True, hide_index=True)
 
 
 def _section_rf_importance(imp: ImportanceResult | None) -> None:
@@ -312,7 +447,24 @@ with st.sidebar:
         help="Maximum allowed peak-to-trough equity drawdown. "
              "Combos that exceed this are excluded regardless of other metrics.")
 
-    run_btn = st.button("\u25b6 Run analysis", type="primary", use_container_width=True)
+    min_combo_pass_rate = st.slider(
+        "Min combo pass rate (%)", 0, 50, 20, 1,
+        help="Minimum percentage of combos for a symbol/timeframe that must pass "
+             "all thresholds before it counts as 'passing'. 0 = any single combo "
+             "is enough; 100 = every combo must pass.",
+    ) / 100.0
+
+    with st.expander("⚙️ Sweep settings"):
+        sqn_sweep_range    = st.slider("SQN sweep range",    0.0, 3.0, (0.5, 2.0), 0.1,
+            help="Range of Min SQN values to sweep over in Section 8.")
+        pf_sweep_range     = st.slider("PF sweep range",     1.0, 5.0, (1.2, 3.0), 0.1,
+            help="Range of Min Profit Factor values to sweep over in Section 8.")
+        trades_sweep_range = st.slider("Trades sweep range", 1,   50,  (5, 40),    1,
+            help="Range of Min # Trades values to sweep over in Section 8.")
+        sweep_steps        = st.slider("Sweep steps",        5,   30,  15,         1,
+            help="Number of evenly-spaced threshold values to evaluate per metric.")
+
+    run_btn = st.button("▶ Run analysis", type="primary", use_container_width=True)
 
 
 # ── Main ─────────────────────────────────────────────────────────────────────────
@@ -337,14 +489,34 @@ cfg = RobustnessConfig(
     min_win_rate=min_win_rate,
     min_sharpe=min_sharpe,
     max_max_drawdown=max_max_dd,
+    min_combo_pass_rate=min_combo_pass_rate,
 )
 
-with st.spinner("Loading backtest results\u2026"):
-    try:
-        df = annotate_dataframe(load_run_dir(results_dir), cfg)
-    except Exception as exc:
-        st.error(f"Failed to load results directory: {exc}")
-        st.stop()
+# ── Load + heavy compute (cached by results_dir) ──────────────────────────────
+# RF importance, SHAP, and OLS only depend on the raw data, not on threshold
+# sliders, so we cache them in session state and skip recomputation when only
+# sliders change.
+if st.session_state.get("_cached_dir") != results_dir:
+    with st.spinner("Loading backtest results and running analysis\u2026"):
+        try:
+            _raw_df = load_run_dir(results_dir)
+        except Exception as exc:
+            st.error(f"Failed to load results directory: {exc}")
+            st.stop()
+        _cfg0 = RobustnessConfig()  # default cfg — column names don't change with sliders
+        st.session_state["_raw_df"]      = _raw_df
+        st.session_state["_imp"]         = compute_toggle_importance(_raw_df, _cfg0)
+        st.session_state["_shap_result"] = compute_shap_importance(_raw_df, _cfg0)
+        st.session_state["_ols_result"]  = compute_ols_significance(_raw_df, _cfg0)
+        st.session_state["_cached_dir"]  = results_dir
+
+raw_df      = st.session_state["_raw_df"]
+imp         = st.session_state["_imp"]
+shap_result = st.session_state["_shap_result"]
+ols_result  = st.session_state["_ols_result"]
+
+# Annotate with current threshold cfg (fast — no ML, no regression)
+df = annotate_dataframe(raw_df, cfg)
 
 col_status = validate_columns(df, cfg)
 missing_required = [c for c, ok in col_status.items() if not ok and c in {
@@ -365,58 +537,138 @@ if missing_optional:
 sym_rates = symbol_pass_rate(df, cfg)
 tf_rates  = timeframe_pass_rate(df, cfg)
 tog_freq  = toggle_frequency(df, cfg)
-result    = aggregate_verdict(sym_rates, tf_rates, tog_freq, pd.DataFrame(), df, df, cfg)
+
+result    = aggregate_verdict(sym_rates, tf_rates, tog_freq, pd.DataFrame(), df, df, cfg,
+                              ols_result=ols_result, shap_result=shap_result)
+toggle_consensus_df = compute_toggle_consensus(df, cfg, ols_result, shap_result)
+
+# Combo count summary — computed once, reused in multiple sections
+_n_total      = len(df)
+_n_symbols    = df[cfg.col_symbol].nunique()
+_n_timeframes = df[cfg.col_timeframe].nunique()
+_n_param_sets = _n_total // (_n_symbols * _n_timeframes) if (_n_symbols * _n_timeframes) else 0
+_n_passing    = int(df["_passes"].sum()) if "_passes" in df.columns else 0
+_pct_passing  = _n_passing / _n_total if _n_total else 0
 
 # ── 1. Verdict ────────────────────────────────────────────────────────────────
-_verdict_banner(result)
-_info(
-    "**ROBUST** \u2705 \u2014 \u2265 60% of symbols pass, \u2265 60% of timeframes pass, avg SQN \u2265 1.0. "
-    "Worth investing more development time.\n\n"
-    "**MARGINAL** \u26a0\ufe0f \u2014 Passes some tests but not all. Promising but not proven. "
-    "Identify the weak area and address it before going live.\n\n"
-    "**WEAK** \u274c \u2014 Fails key thresholds. Not reliable enough to trade. "
-    "Revisit the strategy logic or parameters.",
-    label="\u2139\ufe0f What do ROBUST / MARGINAL / WEAK mean?",
+st.info(
+    f"📊 **{_n_total:,} total combos** — {_n_symbols} symbols × {_n_timeframes} timeframes × "
+    f"{_n_param_sets} parameter sets.  "
+    f"With current thresholds: **{_n_passing:,} pass ({_pct_passing:.1%})**."
 )
-passing_syms = sum(1 for v in result.symbol_pass_rates.values() if v > 0)
-c1, c2, c3, c4 = st.columns(4)
-c1.metric("Symbols passing",  f"{passing_syms}/{len(result.symbol_pass_rates)}")
-c2.metric("Symbol pass rate", f"{result.symbol_rate:.0%}")
-c3.metric("TF pass rate",     f"{result.tf_rate:.0%}")
-c4.metric("Avg SQN (top-1)", f"{result.avg_sqn_long:.2f}")
 
 st.divider()
-st.subheader("1. Symbol Consistency")
-_section_symbol_consistency(result, cfg)
+st.subheader("1. Overall Strategy Effectiveness")
+_section_overall_symbol(cfg, df)
 
 st.divider()
-st.subheader("2. Timeframe Consistency")
-_section_tf_consistency(result, cfg)
+st.subheader("2. Performance per Timeframe")
+_section_per_tf_charts(cfg, df)
 
 st.divider()
 st.subheader("3. Parameter Stability")
 _section_toggle_frequency(result)
 
 st.divider()
-st.subheader("4. Toggle Importance (RandomForest)")
-with st.spinner("Training RandomForest\u2026"):
-    imp = compute_toggle_importance(df, cfg)
+st.subheader("4. Toggle Consensus")
+_section_toggle_consensus(toggle_consensus_df)
+
+st.divider()
+st.subheader("5. Toggle Importance (RandomForest)")
 _section_rf_importance(imp)
 
 st.divider()
-st.subheader("5. Toggle Impact (SHAP)")
-with st.spinner("Computing SHAP values\u2026"):
-    shap_result = compute_shap_importance(df, cfg)
+st.subheader("6. Toggle Impact (SHAP)")
 _section_shap(shap_result)
 
 st.divider()
-st.subheader("6. Toggle Significance (OLS)")
-ols_result = compute_ols_significance(df, cfg)
+st.subheader("7. Toggle Significance (OLS)")
 _section_ols(ols_result)
 
 st.divider()
-st.subheader("7. Top Passing Combos")
+st.subheader("8. Top Passing Combos")
 _section_top_combos(df, cfg)
+
+st.divider()
+st.subheader("9. Threshold Sweep")
+
+# Build per-TF/per-coin combo counts for the explanation
+_n_per_coin      = _n_total // _n_symbols if _n_symbols else 0
+_n_per_cpt       = _n_total // (_n_symbols * _n_timeframes) if (_n_symbols * _n_timeframes) else 0
+_tfs_sorted      = sorted(df[cfg.col_timeframe].unique())
+_tf_lines        = "\n".join(f"  All {_n_per_cpt} combos on {tf}" for tf in _tfs_sorted)
+_floor_pct       = cfg.min_combo_pass_rate
+
+_info(
+    f"**Your {_n_total:,} combos come from:**  \n"
+    f"  {_n_symbols} coins × {_n_timeframes} TFs × {_n_param_sets} parameter sets\n\n"
+    f"**For each coin, we pool ALL timeframes together:**\n"
+    f"{_tf_lines}\n"
+    f"  {'─' * 34}\n"
+    f"  Total: **{_n_per_coin} combos per coin**\n\n"
+    f"A coin **passes** if ≥ **{_floor_pct:.0%}** of its {_n_per_coin} combos pass the threshold being swept.\n"
+    f"**Symbol Pass Rate** = passing coins ÷ {_n_symbols}\n\n"
+    "The chart shows: as you tighten a threshold (left → right), how many of the "
+    f"{_n_symbols} coins still pass?  \n"
+    "A **steep drop** = cliff edge — small changes exclude many coins.  \n"
+    "A **flat line** = stable zone — threshold can be safely moved here."
+)
+
+_SWEEP_EXPLANATIONS = {
+    "SQN": (
+        "**Min SQN (System Quality Number)** measures how *consistently* the strategy profits. "
+        "Below 1.0 = not viable; 1–2 = acceptable; ≥ 2 = strong. "
+        "Raising this floor filters out lucky one-off backtests and keeps only strategies "
+        "that profit steadily across many trades."
+    ),
+    "Profit Factor": (
+        "**Min Profit Factor** = gross profit ÷ gross loss across all trades in a combo. "
+        "1.5 means you earn $1.50 for every $1.00 lost. "
+        "Increasing this rewards strategies with a large win/loss ratio — "
+        "useful when win rate is low but winners are much bigger than losers."
+    ),
+    "# Trades": (
+        "**Min # Trades** — any combo that made fewer than this many total trades over "
+        "the full test period is **excluded entirely** (cutoff filter, not a penalty).  \n"
+        "A combo that only fired 8 times in 3 years cannot be judged — skill or luck?  \n"
+        "Raising this threshold keeps only combos with enough trade history to be statistically "
+        "meaningful.  A steep drop here means many combos barely traded enough to count."
+    ),
+}
+
+_sweep_specs = [
+    ("SQN",           "SQN",           sqn_sweep_range,    min_sqn,    ">="),
+    ("Profit Factor", "Profit Factor",  pf_sweep_range,     min_pf,     ">="),
+    ("# Trades",      "# Trades",       trades_sweep_range, min_trades, ">="),
+]
+_sweep_results: dict[str, tuple[object, float]] = {}
+for _metric_label, _metric_col, _sweep_range, _active_val, _cmp in _sweep_specs:
+    st.markdown(_SWEEP_EXPLANATIONS[_metric_label])
+    _lo, _hi = float(_sweep_range[0]), float(_sweep_range[1])
+    _values = [float(v) for v in np.linspace(_lo, _hi, sweep_steps)]
+    with st.spinner(f"Sweeping {_metric_label}…"):
+        _sweep_df = sweep_threshold(df, _metric_col, _values, cfg, comparison=_cmp)
+    _sweep_results[_metric_label] = (_sweep_df, float(_active_val))
+    _sym_df = _sweep_df[["threshold", "symbol_pass_rate"]].rename(
+        columns={"symbol_pass_rate": "Symbol pass rate"}
+    )
+    _fig = px.line(
+        _sym_df, x="threshold", y="Symbol pass rate",
+        title=(
+            f"Symbol pass rate vs Min {_metric_label}  "
+            f"({_n_symbols} coins, each = {_n_per_coin} combos pooled across {_n_timeframes} TFs)"
+        ),
+        labels={
+            "threshold":        f"Min {_metric_label}",
+            "Symbol pass rate": f"Symbol pass rate  (% of {_n_symbols} coins)",
+        },
+    )
+    _fig.add_vline(
+        x=float(_active_val), line_dash="dash", line_color="white",
+        annotation_text="current threshold", annotation_position="top right",
+    )
+    _fig.update_layout(yaxis_range=[0, 1.05], yaxis_tickformat=".0%")
+    st.plotly_chart(_fig, use_container_width=True)
 
 # ── Auto-save report ──────────────────────────────────────────────────────────
 _threshold_tag = f"sqn{min_sqn}_pf{min_pf}_trades{min_trades}_dd{max_max_dd}"
@@ -438,6 +690,17 @@ report_str = format_report(
     top_combos=df[df["_passes"]].copy() if "_passes" in df.columns else None,
     thresholds=_thresholds,
     data_period=load_data_period(results_dir),
+    sweep_results=_sweep_results,
+    toggle_consensus=toggle_consensus_df,
+    combo_summary={
+        "n_total": _n_total,
+        "n_passing": _n_passing,
+        "n_symbols": _n_symbols,
+        "n_timeframes": _n_timeframes,
+        "n_param_sets": _n_param_sets,
+    },
+    df=df,
+    cfg=cfg,
 )
 try:
     _save_path = Path(results_dir).expanduser().resolve()

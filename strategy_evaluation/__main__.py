@@ -15,7 +15,7 @@ from pathlib import Path
 logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
 
 from strategy_evaluation.config import RobustnessConfig
-from strategy_evaluation.consistency import symbol_pass_rate, timeframe_pass_rate, toggle_frequency
+from strategy_evaluation.consistency import symbol_pass_rate, timeframe_pass_rate, toggle_frequency, compute_toggle_consensus
 from strategy_evaluation.importance import compute_shap_importance, compute_toggle_importance
 from strategy_evaluation.loader import load_data_period, load_run_dir
 from strategy_evaluation.metrics import annotate_dataframe
@@ -50,7 +50,14 @@ def main(argv: list[str] | None = None) -> None:
     importance = compute_toggle_importance(df, cfg)
     shap_result = compute_shap_importance(df, cfg)
     ols = compute_ols_significance(df, cfg)
+    toggle_consensus_df = compute_toggle_consensus(df, cfg, ols, shap_result)
     top_combos = df[df["_passes"]].copy() if "_passes" in df.columns else None
+
+    _n_total      = len(df)
+    _n_symbols    = df[cfg.col_symbol].nunique()
+    _n_timeframes = df[cfg.col_timeframe].nunique()
+    _n_param_sets = _n_total // (_n_symbols * _n_timeframes) if (_n_symbols * _n_timeframes) else 0
+    _n_passing    = int(df["_passes"].sum()) if "_passes" in df.columns else 0
 
     data_period = load_data_period(args.results_dir)
 
@@ -62,6 +69,16 @@ def main(argv: list[str] | None = None) -> None:
         ols=ols,
         top_combos=top_combos,
         data_period=data_period,
+        toggle_consensus=toggle_consensus_df,
+        combo_summary={
+            "n_total": _n_total,
+            "n_passing": _n_passing,
+            "n_symbols": _n_symbols,
+            "n_timeframes": _n_timeframes,
+            "n_param_sets": _n_param_sets,
+        },
+        df=df,
+        cfg=cfg,
     )
     print(report_str)
 

@@ -19,6 +19,10 @@ class RobustnessConfig:
     min_sharpe: float = 0.5
     # Max drawdown gate — only applied when the column is present in the data.
     max_max_drawdown: float = 40.0   # percent
+    # Fraction of combos per symbol/TF that must pass before the symbol/TF is
+    # counted as "passing" in consistency analysis.  0.0 = any single combo
+    # passing is enough (old behaviour); 1.0 = every combo must pass.
+    min_combo_pass_rate: float = 0.20
 
     # ── Decay detection ────────────────────────────────────────────────────
     # Flag a symbol/TF if SQN or Return drops by more than this fraction

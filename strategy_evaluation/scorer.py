@@ -2,11 +2,19 @@
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass, field
+from typing import TYPE_CHECKING
 
 import pandas as pd
 
 from strategy_evaluation.config import RobustnessConfig
+
+if TYPE_CHECKING:
+    from strategy_evaluation.importance import ShapResult
+    from strategy_evaluation.significance import OLSResult
+
+_log = logging.getLogger(__name__)
 
 
 @dataclass
@@ -32,6 +40,8 @@ def aggregate_verdict(
     short_df: pd.DataFrame,
     long_df: pd.DataFrame,
     cfg: RobustnessConfig,
+    ols_result: OLSResult | None = None,
+    shap_result: ShapResult | None = None,
 ) -> RobustnessResult:
     """Combine all analysis outputs into a RobustnessResult with a verdict."""
     symbol_rate = sum(symbol_rates.values()) / len(symbol_rates) if symbol_rates else 0.0
@@ -83,7 +93,7 @@ def aggregate_verdict(
         if decay_rate > 0.25:
             notes.append(f"{decay_flag_count}/{total_pairs} symbol-TF pairs show performance decay.")
 
-    return RobustnessResult(
+    result = RobustnessResult(
         verdict=verdict,
         symbol_pass_rates=symbol_rates,
         tf_pass_rates=tf_rates,
@@ -96,6 +106,8 @@ def aggregate_verdict(
         decay_flag_count=decay_flag_count,
         notes=notes,
     )
+
+    return result
 
 
 def _safe_mean(df: pd.DataFrame, col: str) -> float:

@@ -1,0 +1,80 @@
+What the threshold sliders should affect:
+
+Verdict (ROBUST / MARGINAL / WEAK)
+Symbol and TF pass rates
+Top Passing Combos table
+Toggle frequency in top combos
+What they shouldn't affect:
+
+RF importance, SHAP, OLS — these are landscape measurements, not threshold-dependent
+
+st.sseesion_state for loaded value like importance and impact so they dont have to eload every run. 
+
+
+
+
+Let me read the relevant files to give you accurate answers.   
+
+Read [](file:///Users/andre/Documents/Python_local/pine_script/strategy_evaluation/consistency.py#1-1), lines 1 to 100
+
+Read [](file:///Users/andre/Documents/Python_local/pine_script/strategy_evaluation/config.py)
+
+Read [](file:///Users/andre/Documents/Python_local/pine_script/strategy_evaluation/scorer.py#1-1), lines 1 to 120
+
+Here's the full picture of what you currently have and what's missing.
+
+---
+
+**Where the symbol passing threshold is set**
+
+In config.py:
+```python
+robust_symbol_rate: float = 0.60   # ≥ 60 % → eligible for ROBUST
+weak_symbol_rate:   float = 0.40   # < 40 % → WEAK
+```
+The slider in the app overrides nothing here — the slider only changes the *per-combo* pass/fail gates (SQN, PF, trades etc). The `0.60` and `0.40` band thresholds are hardcoded defaults in the config dataclass.
+
+---
+
+**What you are actually testing right now**
+
+| Section | Question it answers |
+|---|---|
+| Symbol pass rate | Does ≥1 combo pass on each coin? |
+| TF pass rate | Does ≥1 combo pass on each timeframe? |
+| Toggle frequency | Which toggles appear most in top-5 combos? |
+| RF importance | Which toggles explain SQN variance (magnitude only)? |
+| SHAP | Does a toggle raise or lower SQN (direction)? |
+| OLS | Is that direction statistically real or noise? |
+| Verdict | ROBUST / MARGINAL / WEAK based only on pass rates + avg SQN |
+
+
+**The core problem with evaluation the verdict and notes are completely blind to OLS/SHAP. Your report already tells you that `use_donchian` has a coefficient of **−1.19** and `use_bbands` **−0.67**, both ✅ significant. That means two of your toggles are actively destroying SQN — but the current verdict says nothing about this. It just says "MARGINAL". There's no guidance on *why* or *what to fix*.
+
+
+**What a better system would do**
+
+The verdict logic in scorer.py only looks at `symbol_rate`, `tf_rate`, `avg_sqn_long`, and `decay_rate`. It should also consume the OLS result and add actionable notes:
+
+```
+# what the notes section could say instead:
+"⚠️ use_donchian hurts SQN by −1.19 on average (p<0.05) — remove or make optional"
+"⚠️ use_bbands hurts SQN by −0.67 on average (p<0.05) — remove or make optional"
+"✅ use_cmf helps SQN by +0.32 (p<0.05) — keep this toggle ON"
+"→ Suggested next run: exclude use_donchian and use_bbands, expect symbol pass rate to improve"
+```
+
+That turns the report from a measurement into a **decision**. Right now the evaluator tells you the strategy is imperfect but not what to do about it.
+
+---
+
+**The structural gap in the current workflow**
+
+```
+Current:  run → ROBUST/MARGINAL/WEAK → ???
+Better:   run → verdict + "remove X, keep Y" → re-run without X → new verdict
+```
+
+The missing piece is a function in scorer.py that reads `OLSResult` and `ShapResult` and appends specific, ranked action items to `result.notes`. That's one block of logic, maybe 30 lines, and it would make the whole system usable as a real decision tool rather than just a measurement dashboard.
+
+Want me to implement that?
