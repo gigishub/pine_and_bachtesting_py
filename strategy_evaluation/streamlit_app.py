@@ -464,6 +464,25 @@ with st.sidebar:
         sweep_steps        = st.slider("Sweep steps",        5,   30,  15,         1,
             help="Number of evenly-spaced threshold values to evaluate per metric.")
 
+    st.markdown("---")
+    st.subheader("🔧 Toggle Pre-filter")
+    _prev_raw = st.session_state.get("_raw_df")
+    if _prev_raw is not None:
+        _all_toggle_cols = sorted(c for c in _prev_raw.columns if c.startswith("use_"))
+        forced_off_toggles = st.multiselect(
+            "Force toggles OFF",
+            _all_toggle_cols,
+            help=(
+                "Exclude every combo where any of these toggles is ON before running "
+                "analysis. Useful for re-testing without a specific indicator. "
+                "RF, SHAP, and OLS will all recompute on the filtered subset. "
+                "Hit ▶ Run analysis to apply."
+            ),
+        )
+    else:
+        forced_off_toggles: list[str] = []
+        st.caption("📎 Toggle filter available after the first run.")
+
     run_btn = st.button("▶ Run analysis", type="primary", use_container_width=True)
 
 
@@ -492,31 +511,50 @@ cfg = RobustnessConfig(
     min_combo_pass_rate=min_combo_pass_rate,
 )
 
-# ── Load + heavy compute (cached by results_dir) ──────────────────────────────
-# RF importance, SHAP, and OLS only depend on the raw data, not on threshold
-# sliders, so we cache them in session state and skip recomputation when only
-# sliders change.
+# ── Load + heavy compute (cached by results_dir + toggle filter) ─────────────
+# Step 1: load raw CSV — cached by directory path only (no ML).
 if st.session_state.get("_cached_dir") != results_dir:
-    with st.spinner("Loading backtest results and running analysis\u2026"):
+    with st.spinner("Loading backtest results…"):
         try:
             _raw_df = load_run_dir(results_dir)
         except Exception as exc:
             st.error(f"Failed to load results directory: {exc}")
             st.stop()
-        _cfg0 = RobustnessConfig()  # default cfg — column names don't change with sliders
-        st.session_state["_raw_df"]      = _raw_df
-        st.session_state["_imp"]         = compute_toggle_importance(_raw_df, _cfg0)
-        st.session_state["_shap_result"] = compute_shap_importance(_raw_df, _cfg0)
-        st.session_state["_ols_result"]  = compute_ols_significance(_raw_df, _cfg0)
-        st.session_state["_cached_dir"]  = results_dir
+        st.session_state["_raw_df"]     = _raw_df
+        st.session_state["_cached_dir"] = results_dir
 
-raw_df      = st.session_state["_raw_df"]
+raw_df = st.session_state["_raw_df"]
+
+# Step 2: apply toggle pre-filter (RF/SHAP/OLS are recomputed when it changes).
+_filter_key      = tuple(sorted(forced_off_toggles))
+_analysis_key    = (results_dir, _filter_key)
+
+if st.session_state.get("_cached_analysis_key") != _analysis_key:
+    with st.spinner("Running analysis…"):
+        _analysis_raw = raw_df
+        for _t in forced_off_toggles:
+            if _t in _analysis_raw.columns:
+                _analysis_raw = _analysis_raw[_analysis_raw[_t] == 0]
+        _cfg0 = RobustnessConfig()
+        st.session_state["_imp"]                = compute_toggle_importance(_analysis_raw, _cfg0)
+        st.session_state["_shap_result"]        = compute_shap_importance(_analysis_raw, _cfg0)
+        st.session_state["_ols_result"]         = compute_ols_significance(_analysis_raw, _cfg0)
+        st.session_state["_cached_analysis_key"] = _analysis_key
+
 imp         = st.session_state["_imp"]
 shap_result = st.session_state["_shap_result"]
 ols_result  = st.session_state["_ols_result"]
 
+# Step 3: build the working df — filter raw rows, then annotate with thresholds.
+_analysis_raw = raw_df
+for _t in forced_off_toggles:
+    if _t in _analysis_raw.columns:
+        _analysis_raw = _analysis_raw[_analysis_raw[_t] == 0]
+
+_n_raw_total = len(raw_df)  # unfiltered total (for banner when filter is active)
+
 # Annotate with current threshold cfg (fast — no ML, no regression)
-df = annotate_dataframe(raw_df, cfg)
+df = annotate_dataframe(_analysis_raw, cfg)
 
 col_status = validate_columns(df, cfg)
 missing_required = [c for c, ok in col_status.items() if not ok and c in {
@@ -551,11 +589,20 @@ _n_passing    = int(df["_passes"].sum()) if "_passes" in df.columns else 0
 _pct_passing  = _n_passing / _n_total if _n_total else 0
 
 # ── 1. Verdict ────────────────────────────────────────────────────────────────
-st.info(
-    f"📊 **{_n_total:,} total combos** — {_n_symbols} symbols × {_n_timeframes} timeframes × "
-    f"{_n_param_sets} parameter sets.  "
-    f"With current thresholds: **{_n_passing:,} pass ({_pct_passing:.1%})**."
-)
+if forced_off_toggles:
+    _n_excluded    = _n_raw_total - _n_total
+    _filter_labels = ", ".join(f"`{t}=OFF`" for t in forced_off_toggles)
+    st.info(
+        f"📊 **{_n_total:,} combos after filter** "
+        f"({_n_excluded:,} excluded — {_filter_labels}).  "
+        f"With current thresholds: **{_n_passing:,} pass ({_pct_passing:.1%})**."
+    )
+else:
+    st.info(
+        f"📊 **{_n_total:,} total combos** — {_n_symbols} symbols × {_n_timeframes} timeframes × "
+        f"{_n_param_sets} parameter sets.  "
+        f"With current thresholds: **{_n_passing:,} pass ({_pct_passing:.1%})**."
+    )
 
 st.divider()
 st.subheader("1. Overall Strategy Effectiveness")
