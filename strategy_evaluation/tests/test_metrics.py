@@ -20,7 +20,7 @@ def _row(**kwargs: object) -> pd.Series:
     defaults = {
         "SQN": 1.5,
         "Profit Factor": 2.0,
-        "# Trades": 20,
+        "# Trades": 30,
         "Win Rate [%]": 40.0,
         "Sharpe Ratio": 0.8,
         "Return [%]": 25.0,

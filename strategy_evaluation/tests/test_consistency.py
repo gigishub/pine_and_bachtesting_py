@@ -26,7 +26,7 @@ def _passing_combo(symbol: str, tf: str, rank: int = 1, **overrides: object) -> 
         "Rank": rank,
         "SQN": 1.5,
         "Profit Factor": 2.0,
-        "# Trades": 20,
+        "# Trades": 30,
         "Win Rate [%]": 40.0,
         "Sharpe Ratio": 0.8,
         "Return [%]": 25.0,
@@ -204,7 +204,7 @@ class TestToggleConsensus:
             "Rank": 1,
             "SQN": sqn,
             "Profit Factor": 2.0,
-            "# Trades": 20,
+            "# Trades": 30,
             "Win Rate [%]": 50.0,
             "Sharpe Ratio": 1.0,
             "Return [%]": 30.0,
@@ -243,7 +243,7 @@ class TestToggleConsensus:
             rows.append({
                 "Symbol": f"SYM{i}", "Timeframe": "4H",
                 "Parameter Signature": "sig", "Rank": 1,
-                "SQN": 2.0, "Profit Factor": 2.0, "# Trades": 20,
+                "SQN": 2.0, "Profit Factor": 2.0, "# Trades": 30,
                 "Win Rate [%]": 50.0, "Sharpe Ratio": 1.0, "Return [%]": 30.0,
                 "toggle_a": 1, "_passes": True,
             })
@@ -269,7 +269,7 @@ class TestToggleConsensus:
             rows.append({
                 "Symbol": f"SYM{i}", "Timeframe": "4H",
                 "Parameter Signature": "sig", "Rank": 1,
-                "SQN": 2.0, "Profit Factor": 2.0, "# Trades": 20,
+                "SQN": 2.0, "Profit Factor": 2.0, "# Trades": 30,
                 "Win Rate [%]": 50.0, "Sharpe Ratio": 1.0, "Return [%]": 30.0,
                 "toggle_a": 1, "_passes": True,
             })
@@ -295,7 +295,7 @@ class TestToggleConsensus:
             rows.append({
                 "Symbol": f"SYM{i}", "Timeframe": "4H",
                 "Parameter Signature": "sig", "Rank": 1,
-                "SQN": 1.5, "Profit Factor": 2.0, "# Trades": 20,
+                "SQN": 1.5, "Profit Factor": 2.0, "# Trades": 30,
                 "Win Rate [%]": 50.0, "Sharpe Ratio": 1.0, "Return [%]": 20.0,
                 "toggle_a": 1, "toggle_b": 0, "_passes": True,
             })

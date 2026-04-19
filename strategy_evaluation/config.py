@@ -14,11 +14,11 @@ class RobustnessConfig:
     # ── Per-combo pass/fail thresholds ─────────────────────────────────────
     min_sqn: float = 1.0
     min_profit_factor: float = 1.5
-    min_trades: int = 10
+    min_trades: int = 30
     min_win_rate: float = 30.0   # percent
     min_sharpe: float = 0.5
     # Max drawdown gate — only applied when the column is present in the data.
-    max_max_drawdown: float = 40.0   # percent
+    max_max_drawdown: float = 20.0   # percent
     # Fraction of combos per symbol/TF that must pass before the symbol/TF is
     # counted as "passing" in consistency analysis.  0.0 = any single combo
     # passing is enough (old behaviour); 1.0 = every combo must pass.
