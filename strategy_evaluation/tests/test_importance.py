@@ -10,6 +10,7 @@ from strategy_evaluation.config import RobustnessConfig
 from strategy_evaluation.importance import (
     ImportanceResult,
     ShapResult,
+    _get_toggle_cols,
     compute_shap_importance,
     compute_toggle_importance,
 )
@@ -165,3 +166,79 @@ class TestComputeShapImportance:
             assert abs(result.mean_shap[col]) == pytest.approx(
                 result.abs_mean_shap.get(col, float("nan")), rel=1e-6
             )
+
+
+class TestGetToggleCols:
+    """Binary-detection toggle column identification."""
+
+    def test_binary_columns_detected(self) -> None:
+        df = pd.DataFrame({"use_adx": [1, 0, 1], "use_ema": [0, 0, 1]})
+        assert set(_get_toggle_cols(df)) == {"use_adx", "use_ema"}
+
+    def test_metric_columns_excluded(self) -> None:
+        """Continuous-valued metric columns must not appear as toggles."""
+        df = pd.DataFrame({
+            "use_adx": [1, 0, 1, 0],
+            "SQN": [1.5, 2.0, 0.8, 1.1],
+            "# Trades": [30, 45, 60, 75],
+            "Rank": [1, 2, 3, 4],
+            "Return [%]": [10.5, -5.0, 25.0, 3.2],
+            "Sharpe Ratio": [0.8, 1.2, 0.3, 0.9],
+        })
+        result = _get_toggle_cols(df)
+        assert result == ["use_adx"]
+
+    def test_string_columns_excluded(self) -> None:
+        df = pd.DataFrame({"Symbol": ["BTC", "ETH"], "use_adx": [1, 0]})
+        result = _get_toggle_cols(df)
+        assert result == ["use_adx"]
+
+    def test_internal_columns_excluded(self) -> None:
+        """Columns starting with _ are never toggles even if binary."""
+        df = pd.DataFrame({"_passes": [1, 0, 1], "use_adx": [1, 0, 1]})
+        result = _get_toggle_cols(df)
+        assert result == ["use_adx"]
+
+    def test_pinned_off_included(self) -> None:
+        """A pinned-OFF column (all 0) is a valid toggle — shows 0% frequency."""
+        df = pd.DataFrame({"use_donchian": [0, 0, 0], "use_adx": [1, 0, 1]})
+        result = _get_toggle_cols(df)
+        assert set(result) == {"use_donchian", "use_adx"}
+
+    def test_pinned_on_included(self) -> None:
+        """A pinned-ON column (all 1) is a valid toggle — shows 100% frequency."""
+        df = pd.DataFrame({"use_cmf": [1, 1, 1], "use_adx": [1, 0, 1]})
+        result = _get_toggle_cols(df)
+        assert set(result) == {"use_cmf", "use_adx"}
+
+    def test_empty_column_excluded(self) -> None:
+        df = pd.DataFrame({"use_adx": [None, None], "use_ema": [1, 0]})
+        result = _get_toggle_cols(df)
+        assert result == ["use_ema"]
+
+    def test_mixed_real_csv_shape(self) -> None:
+        """Simulate real AMS CSV columns — only use_* toggle columns returned."""
+        rng = np.random.default_rng(0)
+        n = 50
+        df = pd.DataFrame({
+            "Symbol": ["BTC"] * n,
+            "Timeframe": ["4H"] * n,
+            "Condition": ["long"] * n,
+            "Parameter Signature": ["sig"] * n,
+            "use_adx": rng.integers(0, 2, n).astype(float),
+            "use_ema_ribbon": rng.integers(0, 2, n).astype(float),
+            "use_chandelier": rng.integers(0, 2, n).astype(float),
+            "Return [%]": rng.uniform(-20, 80, n),
+            "Expectancy [%]": rng.uniform(0, 5, n),
+            "Profit Factor": rng.uniform(0.5, 4.0, n),
+            "Win Rate [%]": rng.uniform(20, 70, n),
+            "SQN": rng.uniform(-1, 3, n),
+            "# Trades": rng.integers(5, 200, n).astype(float),
+            "Sharpe Ratio": rng.uniform(-0.5, 2.5, n),
+            "Calmar Ratio": rng.uniform(0, 5, n),
+            "Rank": np.arange(1, n + 1, dtype=float),
+            "_passes": rng.integers(0, 2, n).astype(bool),
+            "_score": rng.uniform(0, 1, n),
+        })
+        result = _get_toggle_cols(df)
+        assert set(result) == {"use_adx", "use_ema_ribbon", "use_chandelier"}

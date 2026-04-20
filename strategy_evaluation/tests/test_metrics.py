@@ -25,7 +25,7 @@ def _row(**kwargs: object) -> pd.Series:
         "Sharpe Ratio": 0.8,
         "Return [%]": 25.0,
         "Max Drawdown [%]": 15.0,
-        "Expectancy": 1.5,
+        "Expectancy [%]": 1.5,
         "Calmar Ratio": 2.0,
     }
     defaults.update(kwargs)
@@ -69,11 +69,11 @@ class TestScoreCombo:
     def test_better_row_scores_higher(self, cfg: RobustnessConfig) -> None:
         good = score_combo(_row(SQN=2.5, **{
             "Profit Factor": 3.5, "Sharpe Ratio": 1.5,
-            "Expectancy": 4.0, "Max Drawdown [%]": 5.0, "Calmar Ratio": 4.5,
+            "Expectancy [%]": 4.0, "Max Drawdown [%]": 5.0, "Calmar Ratio": 4.5,
         }), cfg)
         bad = score_combo(_row(SQN=0.2, **{
             "Profit Factor": 1.1, "Sharpe Ratio": 0.1,
-            "Expectancy": 0.1, "Max Drawdown [%]": 55.0, "Calmar Ratio": 0.1,
+            "Expectancy [%]": 0.1, "Max Drawdown [%]": 55.0, "Calmar Ratio": 0.1,
         }), cfg)
         assert good > bad
 

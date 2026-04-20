@@ -24,18 +24,11 @@ class RobustnessConfig:
     # passing is enough (old behaviour); 1.0 = every combo must pass.
     min_combo_pass_rate: float = 0.20
 
-    # ── Decay detection ────────────────────────────────────────────────────
-    # Flag a symbol/TF if SQN or Return drops by more than this fraction
-    # when comparing the short-period run to the long-period run.
-    decay_threshold: float = 0.30  # 30 %
-
     # ── Verdict thresholds ─────────────────────────────────────────────────
     robust_symbol_rate: float = 0.60   # ≥ 60 % of symbols must pass
     robust_tf_rate: float = 0.60       # ≥ 60 % of timeframes must pass
-    robust_avg_sqn: float = 1.0
 
     weak_symbol_rate: float = 0.40     # < 40 % → WEAK
-    weak_avg_sqn: float = 0.5
 
     # ── Scoring weights (must sum to 1.0) ──────────────────────────────────
     # win_rate and trades are pass/fail gates only — not in the composite score.
@@ -56,7 +49,7 @@ class RobustnessConfig:
     col_sharpe: str = "Sharpe Ratio"
     col_return: str = "Return [%]"
     col_max_drawdown: str = "Max Drawdown [%]"
-    col_expectancy: str = "Expectancy"
+    col_expectancy: str = "Expectancy [%]"
     col_calmar: str = "Calmar Ratio"
     col_symbol: str = "Symbol"
     col_timeframe: str = "Timeframe"

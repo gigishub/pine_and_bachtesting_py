@@ -2,11 +2,32 @@
 
 from __future__ import annotations
 
+import dataclasses
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import Any, NamedTuple
 
 from ..strategy.parameters import Parameters
+
+# ---------------------------------------------------------------------------
+# Audit helpers
+# ---------------------------------------------------------------------------
+
+# All Parameters boolean fields that must be explicitly declared in
+# boolean_filter_ranges.  use_long / use_short are handled separately via
+# enable_long / enable_short so they are excluded from this set.
+_AUDITABLE_BOOL_FLAGS: tuple[str, ...] = tuple(
+    f.name
+    for f in dataclasses.fields(Parameters)
+    if f.type == "bool" and f.name not in ("use_long", "use_short")
+)
+
+
+class AuditEntry(NamedTuple):
+    """One row in the param_audit() table."""
+    name: str
+    status: str   # swept | pinned_on | pinned_off | implicit
+    values: tuple  # effective range or single value
 
 # ---------------------------------------------------------------------------
 # Single-run config (used by backtesting.py runner)
@@ -183,12 +204,84 @@ class MomentumGridConfig:
 
         Overrides use_long / use_short from enable_long / enable_short so the
         grid runner always uses the config-level direction setting.
+
+        Single-value boolean pins (len(rng) == 1) are applied here so they
+        override Parameters() defaults.  Without this a (False,) pin on a
+        True-defaulting flag (e.g. use_donchian) would silently run as True
+        because single-value ranges are excluded from parameter_names and
+        therefore never written into grid candidates.
         """
         from dataclasses import asdict
         params = asdict(Parameters())
         params["use_long"]  = self.enable_long
         params["use_short"] = self.enable_short
+        for name, rng in self.boolean_filter_ranges.items():
+            if len(rng) == 1:
+                params[name] = rng[0]
         return params
+
+    def validate_coverage(self) -> None:
+        """Raise ValueError if any auditable boolean flag is absent from boolean_filter_ranges.
+
+        Auditable flags are all Parameters bool fields except use_long / use_short
+        (those are controlled via enable_long / enable_short).
+
+        Call this before starting a run to catch incomplete configs early rather
+        than silently inheriting Parameters() defaults.
+        """
+        missing = [f for f in _AUDITABLE_BOOL_FLAGS if f not in self.boolean_filter_ranges]
+        if missing:
+            raise ValueError(
+                "MomentumGridConfig is missing explicit declarations for the following "
+                "boolean flags.  Add them to boolean_filter_ranges as a swept range "
+                "(False, True) or a single-value pin (True,) / (False,).\n"
+                "Missing: " + ", ".join(missing)
+            )
+
+    def param_audit(self) -> list[AuditEntry]:
+        """Return a structured audit of every parameter's effective configuration.
+
+        Boolean flags are categorised as:
+          swept      — range has >1 value (e.g. (False, True))
+          pinned_on  — single-value pin (True,)
+          pinned_off — single-value pin (False,)
+          implicit   — not declared; runs at Parameters() default (⚠ unintentional)
+
+        Numeric sweep params are also included (swept vs pinned).
+
+        Use this to inspect the effective config before a run, or to generate
+        the run_manifest.txt record saved alongside CSVs.
+        """
+        defaults = {f.name: f.default for f in dataclasses.fields(Parameters)}
+        entries: list[AuditEntry] = []
+
+        for name in _AUDITABLE_BOOL_FLAGS:
+            rng = self.boolean_filter_ranges.get(name)
+            if rng is None:
+                status = "implicit"
+                values = (defaults[name],)
+            elif len(rng) > 1:
+                status = "swept"
+                values = rng
+            elif rng[0] is True:
+                status = "pinned_on"
+                values = rng
+            else:
+                status = "pinned_off"
+                values = rng
+            entries.append(AuditEntry(name, status, values))
+
+        _numeric = [
+            ("adx_threshold",       self.adx_threshold_range),
+            ("chandelier_atr_mult", self.chandelier_atr_mult_range),
+            ("cmf_threshold",       self.cmf_threshold_range),
+            ("trail_atr_mult",      self.trail_atr_mult_range),
+        ]
+        for name, rng in _numeric:
+            status = "swept" if len(rng) > 1 else "pinned"
+            entries.append(AuditEntry(name, status, rng))
+
+        return entries
 
     @property
     def parameter_names(self) -> tuple[str, ...]:

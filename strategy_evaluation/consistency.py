@@ -10,6 +10,7 @@ import numpy as np
 import pandas as pd
 
 from strategy_evaluation.config import RobustnessConfig
+from strategy_evaluation.importance import _get_toggle_cols
 from strategy_evaluation.metrics import annotate_dataframe
 
 # Maps the VBT metric column name to the RobustnessConfig field that gates it.
@@ -87,7 +88,11 @@ def sweep_threshold(
 
     Returns
     -------
-    pd.DataFrame with columns ``threshold``, ``symbol_pass_rate``, ``tf_pass_rate``.
+    pd.DataFrame with columns:
+      - ``threshold``
+      - ``symbol_pass_rate``   : fraction of symbols where ≥ min_combo_pass_rate of combos pass
+      - ``symbol_any_pass_rate``: fraction of symbols with at least 1 passing combo
+      - ``tf_pass_rate``       : fraction of timeframes meeting the pass-rate criterion
     """
     if metric_col not in _METRIC_TO_CFG_FIELD:
         raise ValueError(
@@ -100,41 +105,41 @@ def sweep_threshold(
 
     for threshold in sweep_values:
         step_cfg = dataclasses.replace(cfg, **{cfg_field: threshold})
-        sym_rates = symbol_pass_rate(df, step_cfg)
-        tf_rates = timeframe_pass_rate(df, step_cfg)
+        ann = annotate_dataframe(df, step_cfg)
 
-        sym_rate = sum(sym_rates.values()) / len(sym_rates) if sym_rates else 0.0
-        tf_rate = sum(tf_rates.values()) / len(tf_rates) if tf_rates else 0.0
+        # Compute all three metrics in one groupby pass to avoid re-annotating.
+        sym_grouped = ann.groupby(cfg.col_symbol)["_passes"]
+        n_syms = sym_grouped.ngroups
+        n_pct_pass = sum(
+            1 for _, g in sym_grouped if g.mean() >= step_cfg.min_combo_pass_rate
+        )
+        n_any_pass = sum(1 for _, g in sym_grouped if g.any())
+        sym_rate = n_pct_pass / n_syms if n_syms else 0.0
+        any_rate = n_any_pass / n_syms if n_syms else 0.0
 
-        rows.append(
-            {"threshold": threshold, "symbol_pass_rate": sym_rate, "tf_pass_rate": tf_rate}
+        tf_pass: dict[str, set] = {}
+        tf_total: dict[str, set] = {}
+        for (sym, tf), g in ann.groupby([cfg.col_symbol, cfg.col_timeframe])["_passes"]:
+            k = str(tf)
+            tf_total.setdefault(k, set()).add(str(sym))
+            if g.mean() >= step_cfg.min_combo_pass_rate:
+                tf_pass.setdefault(k, set()).add(str(sym))
+        tf_rate = (
+            float(np.mean([
+                len(tf_pass.get(tf, set())) / len(tot)
+                for tf, tot in tf_total.items()
+            ]))
+            if tf_total else 0.0
         )
 
+        rows.append({
+            "threshold":             threshold,
+            "symbol_pass_rate":      sym_rate,
+            "symbol_any_pass_rate":  any_rate,
+            "tf_pass_rate":          tf_rate,
+        })
+
     return pd.DataFrame(rows)
-
-
-def top_combo_overlap(df: pd.DataFrame, cfg: RobustnessConfig, top_n: int = 5) -> dict[str, int]:
-    """Count how often each Parameter Signature appears in the top-N ranked combos.
-
-    High counts indicate that a parameter set generalises well across symbols
-    and timeframes.  Low counts (every symbol has a unique top combo) indicate
-    fragility — the strategy is over-fit to individual instruments.
-
-    Only qualifying combos (``_passes=True``) are considered so that low-trade
-    outliers with inflated Expectancy do not dominate the frequency count.
-
-    Returns
-    -------
-    dict mapping Parameter Signature → count of appearances, sorted descending.
-    """
-    source = df[df["_passes"]].copy() if "_passes" in df.columns else df.copy()
-    top_rows = (
-        source.sort_values(cfg.col_rank)
-        .groupby([cfg.col_symbol, cfg.col_timeframe])
-        .head(top_n)
-    )
-    counter: Counter[str] = Counter(top_rows[cfg.col_param_sig].dropna())
-    return dict(counter.most_common())
 
 
 def toggle_frequency(df: pd.DataFrame, cfg: RobustnessConfig, top_n: int = 5) -> dict[str, int]:
@@ -153,17 +158,8 @@ def toggle_frequency(df: pd.DataFrame, cfg: RobustnessConfig, top_n: int = 5) ->
         .groupby([cfg.col_symbol, cfg.col_timeframe])
         .head(top_n)
     )
-    # Boolean / 0-1 columns that are not metadata
-    exclude = {
-        cfg.col_symbol, cfg.col_timeframe, cfg.col_param_sig, cfg.col_rank,
-        cfg.col_sqn, cfg.col_pf, cfg.col_trades, cfg.col_win_rate,
-        cfg.col_sharpe, cfg.col_return,
-        "Condition", "Expectancy [%]", "Avg Trade [%]", "Best Trade [%]",
-        "Worst Trade [%]", "Avg Win Trade [%]", "Avg Loss Trade [%]",
-        "Max Drawdown [%]", "Max Drawdown Duration", "Exposure Time [%]",
-        "Calmar Ratio", "_passes", "_score",
-    }
-    toggle_cols = [c for c in top_rows.columns if c not in exclude]
+    # Binary-detection: only columns whose values are all 0/1 are toggles.
+    toggle_cols = _get_toggle_cols(top_rows)
 
     counts: dict[str, int] = {}
     for col in toggle_cols:
@@ -245,16 +241,8 @@ def compute_toggle_consensus(
     if n_top_rows == 0:
         return pd.DataFrame(columns=_EMPTY_COLS)
 
-    exclude = {
-        cfg.col_symbol, cfg.col_timeframe, cfg.col_param_sig, cfg.col_rank,
-        cfg.col_sqn, cfg.col_pf, cfg.col_trades, cfg.col_win_rate,
-        cfg.col_sharpe, cfg.col_return,
-        "Condition", "Expectancy [%]", "Avg Trade [%]", "Best Trade [%]",
-        "Worst Trade [%]", "Avg Win Trade [%]", "Avg Loss Trade [%]",
-        "Max Drawdown [%]", "Max Drawdown Duration", "Exposure Time [%]",
-        "Calmar Ratio", "_passes", "_score",
-    }
-    toggle_cols = [c for c in top_rows.columns if c not in exclude]
+    # Binary-detection: only columns whose values are all 0/1 are toggles.
+    toggle_cols = _get_toggle_cols(top_rows)
 
     # Build OLS lookup: toggle → (coeff, p_value, significant)
     ols_lookup: dict[str, tuple[float, float, bool]] = {}

@@ -13,7 +13,6 @@ from pathlib import Path
 # regardless of the working directory when `streamlit run` is invoked.
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-import math
 from collections import defaultdict
 from datetime import datetime
 import pandas as pd
@@ -42,27 +41,12 @@ st.set_page_config(
     layout="wide",
 )
 
-_VERDICT_COLOUR = {"ROBUST": "#2ecc71", "MARGINAL": "#f39c12", "WEAK": "#e74c3c"}
-_VERDICT_ICON   = {"ROBUST": "\u2705",  "MARGINAL": "\u26a0\ufe0f", "WEAK": "\u274c"}
-
 
 # ── Helpers ──────────────────────────────────────────────────────────────────────
 
 def _info(text: str, label: str = "\u2139\ufe0f How to read this") -> None:
     with st.expander(label):
         st.markdown(text)
-
-
-def _verdict_banner(result: RobustnessResult) -> None:
-    colour = _VERDICT_COLOUR[result.verdict]
-    icon   = _VERDICT_ICON[result.verdict]
-    st.markdown(
-        f'<div style="background:{colour};padding:1rem 1.5rem;border-radius:8px;margin-bottom:0.6rem;">' +
-        f'<h3 style="color:white;margin:0;">{icon} Verdict: {result.verdict}</h3></div>',
-        unsafe_allow_html=True,
-    )
-    for note in result.notes:
-        st.markdown(f"- {note}")
 
 
 # ── Toggle categorisation ────────────────────────────────────────────────────
@@ -197,8 +181,6 @@ def _section_overall_symbol(cfg: RobustnessConfig, df: pd.DataFrame) -> None:
 
 def _section_per_tf_charts(cfg: RobustnessConfig, df: pd.DataFrame) -> None:
     """Section 2 — one bar chart per tested timeframe + coverage summary."""
-    from collections import defaultdict
-
     n_total          = len(df)
     n_symbols        = df[cfg.col_symbol].nunique()
     n_tfs            = df[cfg.col_timeframe].nunique()
@@ -220,8 +202,8 @@ def _section_per_tf_charts(cfg: RobustnessConfig, df: pd.DataFrame) -> None:
         f"win%≥{cfg.min_win_rate:.0f}  sharpe≥{cfg.min_sharpe}  max_dd≤{cfg.max_max_drawdown:.0f}%`"
     )
 
-    timeframes = sorted(df[col_tf].unique())
-    all_symbols = sorted(df[col_sym].unique())
+    timeframes = sorted(df[col_tf].dropna().unique())
+    all_symbols = sorted(df[col_sym].dropna().unique())
     # coin → list of TFs it passes
     coin_tf_pass: dict[str, list[str]] = {sym: [] for sym in all_symbols}
 
@@ -598,10 +580,10 @@ with st.sidebar:
 
     _prev_raw = st.session_state.get("_raw_df")
 
-    with st.expander("🕐 Timeframe Filter"):
+    with st.expander("🕐 Timeframe Filter", expanded=_prev_raw is not None):
         if _prev_raw is not None:
             _tf_col  = RobustnessConfig().col_timeframe
-            _all_tfs = sorted(_prev_raw[_tf_col].unique().tolist())
+            _all_tfs = sorted(_prev_raw[_tf_col].dropna().unique().tolist())
             active_timeframes: list | None = [
                 tf for tf in _all_tfs
                 if st.checkbox(str(tf), value=True, key=f"tf_{tf}")
@@ -610,7 +592,7 @@ with st.sidebar:
             active_timeframes = None  # data not yet loaded; sentinel = no filter
             st.caption("📎 Timeframe filter available after the first run.")
 
-    with st.expander("🔧 Toggle Pre-filter"):
+    with st.expander("🔧 Toggle Pre-filter", expanded=_prev_raw is not None):
         if _prev_raw is not None:
             _all_toggle_cols = sorted(c for c in _prev_raw.columns if c.startswith("use_"))
             # Group toggles by strategy phase
@@ -641,10 +623,10 @@ with st.sidebar:
             forced_off_toggles: list[str] = []
             st.caption("📎 Toggle filter available after the first run.")
 
-    with st.expander("🪙 Symbol Filter"):
+    with st.expander("🪙 Symbol Filter", expanded=_prev_raw is not None):
         if _prev_raw is not None:
             _sym_col_raw  = RobustnessConfig().col_symbol
-            _all_syms_raw = sorted(_prev_raw[_sym_col_raw].unique().tolist())
+            _all_syms_raw = sorted(_prev_raw[_sym_col_raw].dropna().unique().tolist())
             _sym_mode = st.radio(
                 "Mode", ["All", "1 pair", "Custom"],
                 horizontal=True, key="sym_mode",
@@ -857,8 +839,7 @@ sym_rates = symbol_pass_rate(df, cfg)
 tf_rates  = timeframe_pass_rate(df, cfg)
 tog_freq  = toggle_frequency(df, cfg)
 
-result    = aggregate_verdict(sym_rates, tf_rates, tog_freq, pd.DataFrame(), df, df, cfg,
-                              ols_result=ols_result, shap_result=shap_result)
+result    = aggregate_verdict(sym_rates, tf_rates, tog_freq, cfg)
 toggle_consensus_df = compute_toggle_consensus(df, cfg, ols_result, shap_result)
 
 # Combo count summary — computed once, reused in multiple sections
@@ -943,15 +924,19 @@ st.subheader("9. Threshold Sweep")
 # Build per-TF/per-coin combo counts for the explanation
 _n_per_coin      = _n_total // _n_symbols if _n_symbols else 0
 _n_per_cpt       = _n_total // (_n_symbols * _n_timeframes) if (_n_symbols * _n_timeframes) else 0
-_tfs_sorted      = sorted(df[cfg.col_timeframe].unique())
+_tfs_sorted      = sorted(df[cfg.col_timeframe].dropna().unique())
 _tf_lines        = "\n".join(f"  All {_n_per_cpt} combos on {tf}" for tf in _tfs_sorted)
 _floor_pct       = cfg.min_combo_pass_rate
 
 _info(
     f"```\n"
     f"# data: {_n_total:,} combos — {_n_symbols} coins × {_n_timeframes} TFs × {_n_param_sets} params\n"
-    f"# coin ✅ if ≥ {_floor_pct:.0%} of its {_n_per_coin} combos pass the threshold being swept\n"
+    f"# 'robust' line  : coin ✅ if ≥ {_floor_pct:.0%} of its {_n_per_coin} combos pass\n"
+    f"# 'any pass' line: coin ✅ if ≥ 1 combo passes  (matches the Top Combos table)\n"
     f"# y = passing coins ÷ {_n_symbols}\n\n"
+    f"Gap between the two lines = coins that have 1–{int(_floor_pct * _n_per_coin) - 1} passing combos\n"
+    f"but fall below the {_floor_pct:.0%} robustness floor — they appear in Top Combos\n"
+    f"but are NOT counted as robust in the symbol pass rate.\n\n"
     f"steep drop  →  threshold sensitive  →  small change excludes many coins\n"
     f"flat line   →  stable zone  →  safe to move threshold here\n"
     f"```"
@@ -988,18 +973,29 @@ for _metric_label, _metric_col, _sweep_range, _active_val, _cmp in _sweep_specs:
     with st.spinner(f"Sweeping {_metric_label}…"):
         _sweep_df = sweep_threshold(df, _metric_col, _values, cfg, comparison=_cmp)
     _sweep_results[_metric_label] = (_sweep_df, float(_active_val))
-    _sym_df = _sweep_df[["threshold", "symbol_pass_rate"]].rename(
-        columns={"symbol_pass_rate": "Symbol pass rate"}
-    )
+    # Build tidy (long) dataframe for two-line chart
+    _tidy = pd.concat([
+        _sweep_df[["threshold", "symbol_pass_rate"]].rename(
+            columns={"symbol_pass_rate": "pass_rate"}
+        ).assign(metric=f"Robust (≥{_floor_pct:.0%} combos)"),
+        _sweep_df[["threshold", "symbol_any_pass_rate"]].rename(
+            columns={"symbol_any_pass_rate": "pass_rate"}
+        ).assign(metric="Any combo passes"),
+    ], ignore_index=True)
     _fig = px.line(
-        _sym_df, x="threshold", y="Symbol pass rate",
+        _tidy, x="threshold", y="pass_rate", color="metric",
         title=(
             f"Symbol pass rate vs Min {_metric_label}  "
             f"({_n_symbols} coins, each = {_n_per_coin} combos pooled across {_n_timeframes} TFs)"
         ),
         labels={
-            "threshold":        f"Min {_metric_label}",
-            "Symbol pass rate": f"Symbol pass rate  (% of {_n_symbols} coins)",
+            "threshold": f"Min {_metric_label}",
+            "pass_rate": f"Symbol pass rate  (% of {_n_symbols} coins)",
+            "metric":    "Criterion",
+        },
+        color_discrete_map={
+            f"Robust (≥{_floor_pct:.0%} combos)": "#2196F3",
+            "Any combo passes":                    "#FF9800",
         },
     )
     _fig.add_vline(
@@ -1044,3 +1040,21 @@ report_str = format_report(
 _report_ts = datetime.now().strftime("%Y-%m-%d_%H%M")
 st.session_state["_report_str"]             = report_str
 st.session_state["_report_filename_default"] = f"{_report_ts}_{label}_robustness.md"
+
+# ── Inline save button (main content area) ───────────────────────────────────
+st.divider()
+st.subheader("💾 Save Report")
+_inline_fname_default = st.session_state.get("_report_filename_default", f"{_report_ts}_{label}_robustness.md")
+_inline_fname = st.text_input(
+    "Filename", value=_inline_fname_default, key="inline_save_fname",
+)
+if st.button("💾 Save as Markdown", type="primary", key="inline_save_btn"):
+    try:
+        _rd = st.session_state.get("committed", {}).get("results_dir", "")
+        _dest = Path(_rd).expanduser().resolve() if _rd else Path(".")
+        _dest.mkdir(parents=True, exist_ok=True)
+        _fpath = _dest / (_inline_fname.strip() or _inline_fname_default)
+        _fpath.write_text(report_str, encoding="utf-8")
+        st.success(f"✅ Saved → `{_fpath}`")
+    except Exception as _e:
+        st.error(f"Save failed: {_e}")

@@ -23,34 +23,7 @@ from strategy_evaluation.config import RobustnessConfig
 
 _log = logging.getLogger(__name__)
 
-# Columns that are never toggle columns (metadata / metrics).
-_NON_TOGGLE_COLS = frozenset(
-    {
-        "Symbol",
-        "Timeframe",
-        "Condition",
-        "Parameter Signature",
-        "Return [%]",
-        "Expectancy [%]",
-        "Profit Factor",
-        "Win Rate [%]",
-        "Max Drawdown [%]",
-        "# Trades",
-        "SQN",
-        "Avg Trade [%]",
-        "Best Trade [%]",
-        "Worst Trade [%]",
-        "Avg Win Trade [%]",
-        "Avg Loss Trade [%]",
-        "Max Drawdown Duration",
-        "Exposure Time [%]",
-        "Sharpe Ratio",
-        "Calmar Ratio",
-        "Rank",
-        "_passes",
-        "_score",
-    }
-)
+
 
 
 @dataclass
@@ -82,7 +55,27 @@ class ShapResult:
 
 
 def _get_toggle_cols(df: pd.DataFrame) -> list[str]:
-    return [c for c in df.columns if c not in _NON_TOGGLE_COLS]
+    """Return columns whose non-null values are all in {0, 1} (binary toggle columns).
+
+    Detects toggles by value content rather than a hardcoded name exclusion list,
+    so new metric columns never accidentally appear as toggles regardless of their
+    names.  Internal annotation columns (names starting with ``_``) are always
+    excluded even if they happen to be binary (e.g. ``_passes``).
+    """
+    result = []
+    for col in df.columns:
+        if col.startswith("_"):
+            continue
+        try:
+            series = df[col].dropna()
+            if series.empty:
+                continue
+            unique_vals = set(series.astype(float).unique())
+            if unique_vals <= {0.0, 1.0}:
+                result.append(col)
+        except (ValueError, TypeError):
+            continue
+    return result
 
 
 def _prepare_xy(
@@ -110,8 +103,9 @@ def compute_toggle_importance(
     Returns ``None`` if there are not enough rows or toggle columns to train.
     """
     toggle_cols = _get_toggle_cols(df)
+    # Zero-variance toggles provide no signal to the RF — exclude them.
+    toggle_cols = [c for c in toggle_cols if df[c].dropna().nunique() > 1]
     if not toggle_cols:
-        _log.warning("No toggle columns found — skipping importance analysis.")
         return None
     if target_col not in df.columns:
         _log.warning("Target column '%s' not in DataFrame.", target_col)
@@ -161,6 +155,8 @@ def compute_shap_importance(
         return None
 
     toggle_cols = _get_toggle_cols(df)
+    # Zero-variance toggles provide no signal to the RF — exclude them.
+    toggle_cols = [c for c in toggle_cols if df[c].dropna().nunique() > 1]
     if not toggle_cols:
         _log.warning("No toggle columns found — skipping SHAP analysis.")
         return None

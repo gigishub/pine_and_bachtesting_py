@@ -191,7 +191,7 @@ def format_report(
         n_syms_df = df[col_sym].nunique()
         n_tfs_df  = df[col_tf].nunique()
         n_per_cpt = len(df) // (n_syms_df * n_tfs_df) if (n_syms_df * n_tfs_df) else 0
-        timeframes = sorted(df[col_tf].unique())
+        timeframes = sorted(df[col_tf].dropna().unique())
 
         lines.append(
             f"_Per-coin combo pass rate per timeframe. "
@@ -204,7 +204,7 @@ def format_report(
         lines.append(f"| Symbol | {tf_headers} |")
         lines.append(f"|--------|{tf_sep}|")
 
-        all_symbols = sorted(df[col_sym].unique())
+        all_symbols = sorted(df[col_sym].dropna().unique())
         coin_tf_pass: dict[str, list[str]] = {sym: [] for sym in all_symbols}
         tf_rates_map: dict[str, dict[str, float]] = {}
         for tf in timeframes:

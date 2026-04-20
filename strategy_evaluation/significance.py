@@ -15,7 +15,7 @@ import numpy as np
 import pandas as pd
 
 from strategy_evaluation.config import RobustnessConfig
-from strategy_evaluation.importance import _NON_TOGGLE_COLS
+from strategy_evaluation.importance import _get_toggle_cols
 
 _log = logging.getLogger(__name__)
 
@@ -60,7 +60,7 @@ def compute_ols_significance(
         _log.warning("statsmodels not installed — skipping OLS significance analysis.")
         return None
 
-    toggle_cols = [c for c in df.columns if c not in _NON_TOGGLE_COLS]
+    toggle_cols = [c for c in _get_toggle_cols(df) if df[c].dropna().nunique() > 1]
     if not toggle_cols:
         _log.warning("No toggle columns found — skipping OLS analysis.")
         return None

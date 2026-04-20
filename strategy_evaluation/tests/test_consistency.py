@@ -165,7 +165,7 @@ class TestSweepThreshold:
         sweep_vals = [0.5, 1.0, 1.5, 2.0]
         result = sweep_threshold(df, "SQN", sweep_vals, cfg)
         assert len(result) == len(sweep_vals)
-        assert list(result.columns) == ["threshold", "symbol_pass_rate", "tf_pass_rate"]
+        assert list(result.columns) == ["threshold", "symbol_pass_rate", "symbol_any_pass_rate", "tf_pass_rate"]
 
     def test_symbol_pass_rate_non_increasing_as_threshold_tightens(self) -> None:
         """As the SQN threshold rises, pass rate should not increase."""

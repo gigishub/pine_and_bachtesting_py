@@ -45,8 +45,9 @@ def _save_trade_logs(
     top_rows = results.head(config.trade_logs_top_n)
     trade_dfs: list[pd.DataFrame] = []
 
+    baseline = config.build_baseline_params()
     for _, row in top_rows.iterrows():
-        params = {name: row[name] for name in config.parameter_names}
+        params = {**baseline, **{name: row[name] for name in config.parameter_names}}
         rank = int(row["Rank"])
         sig  = str(row["Parameter Signature"])
         try:
@@ -90,8 +91,22 @@ def run_sequential(
     Returns:
         List of Paths to the saved CSV files (one per completed condition).
     """
+    # Fail fast if any boolean flag is missing from the config — prevents silent
+    # inheritance of Parameters() defaults for undeclared flags.
+    config.validate_coverage()
+
     resolved_dir = Path(output_dir or config.output_dir)
     resolved_dir.mkdir(parents=True, exist_ok=True)
+
+    # Save and log the full parameter audit before any CSVs are written so there
+    # is always a human-readable record of exactly what this run used.
+    from ..audit_config import build_manifest
+    config_name = resolved_dir.name
+    manifest_text = build_manifest(config, config_name)
+    manifest_path = resolved_dir / "run_manifest.txt"
+    manifest_path.write_text(manifest_text, encoding="utf-8")
+    logger.info("Run manifest saved → %s", manifest_path)
+    logger.info("\n%s", manifest_text)
 
     datasets = config.build_datasets()
     saved: list[Path] = []

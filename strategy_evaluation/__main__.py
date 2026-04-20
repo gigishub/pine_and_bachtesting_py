@@ -41,11 +41,7 @@ def main(argv: list[str] | None = None) -> None:
     tf_rates = timeframe_pass_rate(df, cfg)
     tog_freq = toggle_frequency(df, cfg)
 
-    # Pass identical df for both args — scorer signature expects short + long but
-    # in single-dir mode there is no comparison; decay metrics will be neutral.
-    import pandas as pd
-    empty_decay = pd.DataFrame()
-    result = aggregate_verdict(sym_rates, tf_rates, tog_freq, empty_decay, df, df, cfg)
+    result = aggregate_verdict(sym_rates, tf_rates, tog_freq, cfg)
 
     importance = compute_toggle_importance(df, cfg)
     shap_result = compute_shap_importance(df, cfg)
