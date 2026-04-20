@@ -377,6 +377,156 @@ def _section_combo_overlap(cfg: RobustnessConfig, df: pd.DataFrame) -> None:
         st.dataframe(disp.reset_index(), use_container_width=True, hide_index=True)
 
 
+def compute_combo_weighted_scores(df: pd.DataFrame, cfg: RobustnessConfig) -> pd.DataFrame:
+    """Compute weighted robustness scores per parameter signature.
+
+    Final Score = avg_score × (coins_passing / N) × 1.5^(n_TFs − 1)
+
+    - avg_score    : mean _score of all passing (combo, coin, TF) rows for this signature
+    - breadth      : coins_passing / N  — fraction of tested coins where this sig passes on ≥1 TF
+    - tf_multiplier: 1.5^(n_TFs − 1)  — exponential reward for cross-TF validity
+                     1 TF → ×1.0  |  2 TFs → ×1.5  |  3 TFs → ×2.25
+
+    Returns DataFrame sorted by final_score descending.
+    """
+    col_sig = cfg.col_param_sig
+    col_sym = cfg.col_symbol
+    col_tf  = cfg.col_timeframe
+
+    if "_passes" not in df.columns or col_sig not in df.columns:
+        return pd.DataFrame()
+
+    n_coins    = df[col_sym].nunique()
+    passing_df = df[df["_passes"]]
+
+    if passing_df.empty or n_coins == 0:
+        return pd.DataFrame()
+
+    records = []
+    for sig, grp in passing_df.groupby(col_sig):
+        avg_score     = float(grp["_score"].mean()) if "_score" in grp.columns else 0.0
+        coins_passing = int(grp[col_sym].nunique())
+        n_tfs         = int(grp[col_tf].nunique())
+        breadth       = coins_passing / n_coins
+        tf_multiplier = 1.5 ** (n_tfs - 1)
+        final_score   = avg_score * breadth * tf_multiplier
+        records.append({
+            "Parameter Signature": sig,
+            "avg_score":    round(avg_score, 4),
+            "coins_passing": coins_passing,
+            "n_TFs":        n_tfs,
+            "breadth":      round(breadth, 4),
+            "tf_multiplier": round(tf_multiplier, 4),
+            "final_score":  round(final_score, 4),
+        })
+
+    return (
+        pd.DataFrame(records)
+        .sort_values("final_score", ascending=False)
+        .reset_index(drop=True)
+    )
+
+
+def _section_weighted_score(cfg: RobustnessConfig, df: pd.DataFrame) -> pd.DataFrame:
+    """Section 2c — weighted robustness score per parameter signature.
+
+    Returns the scored DataFrame so the report generator can include it.
+    """
+    n_coins  = df[cfg.col_symbol].nunique()
+    n_tfs    = df[cfg.col_timeframe].nunique()
+    max_score = 1.0 * 1.0 * (1.5 ** (n_tfs - 1))
+
+    _info(
+        f"```\n"
+        f"Final Score = avg_score × (coins_passing / {n_coins}) × 1.5^(n_TFs − 1)\n"
+        f"\n"
+        f"avg_score     : mean quality score (_score) of all passing rows for this signature\n"
+        f"breadth       : coins_passing / {n_coins}  — fraction of coins where sig passes on ≥1 TF\n"
+        f"tf_multiplier : 1.5^(n_TFs − 1)  — exponential bonus for cross-TF validity\n"
+        f"               1 TF → ×1.0  |  2 TFs → ×1.5  |  3 TFs → ×2.25\n"
+        f"\n"
+        f"high final_score  =  high quality  +  many coins  +  many TFs\n"
+        f"max possible ≈ 1.0 × 1.0 × {1.5 ** (n_tfs - 1):.3f} = {max_score:.3f} "
+        f"(all {n_coins} coins, all {n_tfs} TFs, perfect _score)\n"
+        f"```"
+    )
+
+    scored = compute_combo_weighted_scores(df, cfg)
+
+    if scored.empty:
+        st.info("No passing combos — relax the thresholds.")
+        return scored
+
+    top_n = st.slider(
+        "Show top N signatures",
+        min_value=5, max_value=min(50, len(scored)),
+        value=min(20, len(scored)), step=1,
+        key="weighted_top_n",
+    )
+    display = scored.head(top_n).copy()
+
+    # ── Bar chart: final_score per signature, colored by n_TFs ───────────────
+    fig_bar = px.bar(
+        display,
+        x="final_score",
+        y="Parameter Signature",
+        orientation="h",
+        color="n_TFs",
+        color_continuous_scale="Viridis",
+        title=f"Top {top_n} signatures by Weighted Robustness Score",
+        labels={
+            "final_score": "Final Score",
+            "Parameter Signature": "",
+            "n_TFs": "# TFs",
+        },
+        custom_data=["avg_score", "coins_passing", "n_TFs", "tf_multiplier", "breadth"],
+    )
+    fig_bar.update_traces(
+        hovertemplate=(
+            "<b>%{y}</b><br>"
+            "Final Score: %{x:.4f}<br>"
+            "Avg _score: %{customdata[0]:.4f}<br>"
+            "Coins passing: %{customdata[1]} / " + str(n_coins) + "  (breadth %{customdata[4]:.0%})<br>"
+            "TFs: %{customdata[2]}  →  ×%{customdata[3]:.3f}<extra></extra>"
+        )
+    )
+    fig_bar.update_layout(
+        yaxis={"categoryorder": "total ascending"},
+        coloraxis_colorbar_title="# TFs",
+    )
+    st.plotly_chart(fig_bar, use_container_width=True)
+
+    # ── Scatter: breadth vs avg_score, bubble = final_score, color = n_TFs ──
+    fig_scatter = px.scatter(
+        display,
+        x="breadth",
+        y="avg_score",
+        size="final_score",
+        color="n_TFs",
+        color_continuous_scale="Viridis",
+        hover_name="Parameter Signature",
+        title="Quality vs Breadth  (bubble size = Final Score, colour = # TFs)",
+        labels={
+            "breadth":   f"Breadth  (coins passing / {n_coins})",
+            "avg_score": "Avg Quality Score",
+            "n_TFs":     "# TFs",
+        },
+        hover_data={"final_score": ":.4f", "tf_multiplier": ":.3f"},
+    )
+    fig_scatter.update_layout(xaxis_range=[-0.05, 1.05])
+    st.plotly_chart(fig_scatter, use_container_width=True)
+
+    # ── Full table ────────────────────────────────────────────────────────────
+    st.dataframe(display, use_container_width=True, hide_index=True)
+    st.caption(
+        f"{len(scored)} signatures with ≥1 passing combo.  "
+        f"Max possible Final Score ≈ **{max_score:.3f}** "
+        f"({n_coins} coins × {n_tfs} TFs, perfect quality)."
+    )
+
+    return scored
+
+
 def _section_toggle_frequency(tog_freq: dict[str, int]) -> None:
     """Section 3 — toggle frequency in top-5 combos per symbol/timeframe."""
     _info(
@@ -473,6 +623,7 @@ def _format_phase1_report(
     n_param_sets: int,
     df: pd.DataFrame | None = None,
     sweep_data: dict[str, tuple[pd.DataFrame, float]] | None = None,
+    weighted_scores: pd.DataFrame | None = None,
 ) -> str:
     """Generate a comprehensive Markdown Phase 1 report matching everything visible in the app.
 
@@ -481,6 +632,7 @@ def _format_phase1_report(
         §1  Overall Strategy Effectiveness  (per-coin combo pass rates)
         §2  Performance per Timeframe       (per-coin per-TF tables + coverage summary)
         §2b Universal Combos per Timeframe  (cross-coin combo overlap pivot)
+        §2c Weighted Robustness Score       (final_score = quality × breadth × TF multiplier)
         §3  Parameter Stability             (toggle frequency by category)
         §4  Top Passing Combos              (full table sorted by _score)
         §5  Threshold Sweep                 (two-line sweep tables for SQN, PF, # Trades)
@@ -692,6 +844,41 @@ def _format_phase1_report(
             lines.append(f"_Column '{cfg.col_param_sig}' not found in data._\n")
     else:
         lines.append("_No passing combos with current thresholds._\n")
+
+    # ── §2c Weighted Robustness Score ─────────────────────────────────────────
+    h("§2c. Weighted Robustness Score")
+    _n_coins_rep = n_symbols
+    _n_tfs_rep   = n_timeframes
+    _max_score   = 1.0 * 1.0 * (1.5 ** (_n_tfs_rep - 1))
+    lines.append(
+        "_How to read:_\n"
+        "```\n"
+        f"Final Score = avg_score × (coins_passing / {_n_coins_rep}) × 1.5^(n_TFs − 1)\n"
+        f"\n"
+        f"avg_score     : mean _score of all passing rows for this signature\n"
+        f"breadth       : coins_passing / {_n_coins_rep}  — fraction of coins where sig passes on ≥1 TF\n"
+        f"tf_multiplier : 1.5^(n_TFs − 1)  — exponential bonus for cross-TF validity\n"
+        f"               1 TF → ×1.0  |  2 TFs → ×1.5  |  3 TFs → ×2.25\n"
+        f"\n"
+        f"high final_score  =  high quality  +  many coins  +  many TFs\n"
+        f"max possible ≈ {_max_score:.3f}  (all {_n_coins_rep} coins, {_n_tfs_rep} TFs, perfect quality)\n"
+        "```\n"
+    )
+    if weighted_scores is not None and not weighted_scores.empty:
+        ws_cols = ["Parameter Signature", "avg_score", "coins_passing", "n_TFs",
+                   "breadth", "tf_multiplier", "final_score"]
+        ws_avail = [c for c in ws_cols if c in weighted_scores.columns]
+        header = " | ".join(ws_avail)
+        sep    = " | ".join("---" for _ in ws_avail)
+        lines.append(f"| {header} |")
+        lines.append(f"|{sep}|")
+        for _, r in weighted_scores.iterrows():
+            cells = [_fmt_cell(r[c]) for c in ws_avail]
+            lines.append(f"| {' | '.join(cells)} |")
+        lines.append(f"\n_{len(weighted_scores)} signatures ranked.  "
+                     f"Max possible Final Score ≈ **{_max_score:.3f}**._\n")
+    else:
+        lines.append("_No weighted score data available._\n")
 
     # ── §3 Toggle Frequency ────────────────────────────────────────────────────
     h("§3. Parameter Stability (Toggle Frequency)")
@@ -1142,6 +1329,10 @@ st.subheader("2b. Universal Combos per Timeframe")
 _section_combo_overlap(cfg, df)
 
 st.divider()
+st.subheader("2c. Weighted Robustness Score")
+_weighted_scored = _section_weighted_score(cfg, df)
+
+st.divider()
 st.subheader("3. Parameter Stability (Toggle Frequency)")
 _section_toggle_frequency(tog_freq)
 
@@ -1252,6 +1443,7 @@ _report_str = _format_phase1_report(
     n_param_sets=_n_param_sets,
     df=df,
     sweep_data=_sweep_results_for_report,
+    weighted_scores=_weighted_scored,
 )
 st.session_state["_report_str"]             = _report_str
 st.session_state["_report_filename_default"] = f"{_run_ts}_{label}_phase1.md"
