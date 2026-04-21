@@ -1,4 +1,4 @@
-Config:      2026-04-20_1720_AMS
+Config:      2026-04-21_1937_AMS
 Symbols:     BTCUSDT, ETHUSDT, SOLUSDT
 Timeframes:  1h, 4h
 Period:      2024-01-01 00:00:00  →  2024-07-01 00:00:00

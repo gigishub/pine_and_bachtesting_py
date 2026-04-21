@@ -72,6 +72,7 @@ def build_config(output_dir: Path | None = None) -> MomentumGridConfig:
             "use_bbands":         (False,),          # always off in top-10
             "use_trailing_stop":  (False, True),
             # ── Short flags (all pinned off — long-only run) ───────────────
+            "use_vbt_sl":               (False,),
             "use_ema_ribbon_short":     (False,),
             "use_donchian_short":       (False,),
             "use_volume_profile_short": (False,),

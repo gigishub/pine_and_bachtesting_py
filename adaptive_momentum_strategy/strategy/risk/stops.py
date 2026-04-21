@@ -93,6 +93,81 @@ def compute_trailing_stop_short_series(
     return (rolling_lowest_high + atr * atr_mult).astype(float)
 
 
+def compute_entry_candle_sl_long(
+    low: pd.Series,
+    close: pd.Series,
+    atr: pd.Series,
+    n_atr_init: float = 0.5,
+    min_frac: float = 0.005,
+) -> pd.Series:
+    """Initial SL fraction for longs: entry candle low minus ATR buffer.
+
+    SL price = low[entry_bar] - n_atr_init × ATR[entry_bar]
+    SL frac  = (close - sl_price) / close   (approximates entry_price ≈ close)
+
+    VBT uses the actual fill price (c.init_price) inside adjust_sl_func_nb,
+    so this fraction only matters for the first bar — close is a fine proxy.
+
+    Args:
+        low:         Bar low prices.
+        close:       Bar close prices (proxy for entry price).
+        atr:         ATR series (same length/index as low/close).
+        n_atr_init:  ATR multiplier for buffer below the candle low.
+        min_frac:    Floor fraction (default 0.5%) to avoid zero-distance SL.
+
+    Returns:
+        Float Series of SL fractions, clipped to [min_frac, 1.0].
+    """
+    sl_price = low - n_atr_init * atr
+    return ((close - sl_price) / close).clip(lower=min_frac)
+
+
+def compute_entry_candle_sl_short(
+    high: pd.Series,
+    close: pd.Series,
+    atr: pd.Series,
+    n_atr_init: float = 0.5,
+    min_frac: float = 0.005,
+) -> pd.Series:
+    """Initial SL fraction for shorts: entry candle high plus ATR buffer.
+
+    SL price = high[entry_bar] + n_atr_init × ATR[entry_bar]
+    SL frac  = (sl_price - close) / close
+
+    Args:
+        high:        Bar high prices.
+        close:       Bar close prices (proxy for entry price).
+        atr:         ATR series.
+        n_atr_init:  ATR multiplier for buffer above the candle high.
+        min_frac:    Floor fraction (default 0.5%).
+
+    Returns:
+        Float Series of SL fractions, clipped to [min_frac, 1.0].
+    """
+    sl_price = high + n_atr_init * atr
+    return ((sl_price - close) / close).clip(lower=min_frac)
+
+
+def compute_entry_candle_sl(
+    high: pd.Series,
+    low: pd.Series,
+    close: pd.Series,
+    atr: pd.Series,
+    n_atr_init: float = 0.5,
+    min_frac: float = 0.005,
+) -> tuple[pd.Series, pd.Series]:
+    """Compute both long and short entry candle SL fractions.
+
+    Convenience wrapper around compute_entry_candle_sl_long/short.
+
+    Returns:
+        (sl_frac_long, sl_frac_short) — both clipped to [min_frac, 1.0]
+    """
+    sl_frac_long = compute_entry_candle_sl_long(low, close, atr, n_atr_init, min_frac)
+    sl_frac_short = compute_entry_candle_sl_short(high, close, atr, n_atr_init, min_frac)
+    return sl_frac_long, sl_frac_short
+
+
 def compute_chandelier_short_stop_series(
     high: pd.Series,
     low: pd.Series,

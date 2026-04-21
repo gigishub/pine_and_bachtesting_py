@@ -172,3 +172,16 @@ class Parameters:
     # ------------------------------------------------------------------ #
     short_chandelier_lookback:  int   = 22
     short_chandelier_atr_mult:  float = 2.5  # tighter than long 3.0
+
+    # ------------------------------------------------------------------ #
+    # VBT-native SL (entry candle + swing trailing)
+    # When use_vbt_sl=True, runner.py passes sl_stop + adjust_sl_func_nb
+    # to from_signals() instead of relying on precomputed exit signals for
+    # stop logic.  The entry-candle stop provides an initial defined-risk
+    # level; the swing trailing ratchets it inward as the trade runs.
+    # ------------------------------------------------------------------ #
+    use_vbt_sl: bool = False            # Enable VBT-native SL (entry candle + trailing)
+    sl_atr_period: int = 14             # ATR lookback for SL computation
+    sl_n_atr_init: float = 0.5         # ATR buffer below entry candle low/above high
+    sl_n_atr_trail: float = 0.5        # ATR buffer below trailing swing low/above high
+    sl_swing_lookback: int = 10        # Bars for rolling swing low/high

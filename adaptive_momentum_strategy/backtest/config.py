@@ -132,6 +132,8 @@ class MomentumGridConfig:
             "use_psar":           (False, True),
             "use_bbands":         (False, True),
             "use_trailing_stop":  (False, True),
+            # VBT-native SL — off by default; set (False, True) to sweep
+            "use_vbt_sl":         (False,),
             # Short-side flags (all off by default — enabled via enable_short)
             "use_ema_ribbon_short":     (False,),
             "use_donchian_short":       (False,),
@@ -155,6 +157,11 @@ class MomentumGridConfig:
     ema_fast_range: tuple[int, ...] = (20,)
     ema_mid_range:  tuple[int, ...] = (50,)
     ema_slow_range: tuple[int, ...] = (200,)
+
+    # --- Grid: VBT-native SL numeric sweeps (only matter when use_vbt_sl=True) ---
+    sl_n_atr_init_range:    tuple[float, ...] = (0.5,)
+    sl_n_atr_trail_range:   tuple[float, ...] = (0.5,)
+    sl_swing_lookback_range: tuple[int, ...]  = (10,)
 
     # --- Direction ---
     # enable_long/enable_short control whether long and short flags are swept.
@@ -284,6 +291,9 @@ class MomentumGridConfig:
             ("ema_fast",            self.ema_fast_range),
             ("ema_mid",             self.ema_mid_range),
             ("ema_slow",            self.ema_slow_range),
+            ("sl_n_atr_init",       self.sl_n_atr_init_range),
+            ("sl_n_atr_trail",      self.sl_n_atr_trail_range),
+            ("sl_swing_lookback",   self.sl_swing_lookback_range),
         ]
         for name, rng in _numeric:
             status = "swept" if len(rng) > 1 else "pinned"
@@ -317,6 +327,12 @@ class MomentumGridConfig:
             names.append("ema_mid")
         if len(self.ema_slow_range) > 1:
             names.append("ema_slow")
+        if len(self.sl_n_atr_init_range) > 1:
+            names.append("sl_n_atr_init")
+        if len(self.sl_n_atr_trail_range) > 1:
+            names.append("sl_n_atr_trail")
+        if len(self.sl_swing_lookback_range) > 1:
+            names.append("sl_swing_lookback")
         return tuple(names)
 
     @property
@@ -341,6 +357,12 @@ class MomentumGridConfig:
             ranges["ema_mid"] = self.ema_mid_range
         if len(self.ema_slow_range) > 1:
             ranges["ema_slow"] = self.ema_slow_range
+        if len(self.sl_n_atr_init_range) > 1:
+            ranges["sl_n_atr_init"] = self.sl_n_atr_init_range
+        if len(self.sl_n_atr_trail_range) > 1:
+            ranges["sl_n_atr_trail"] = self.sl_n_atr_trail_range
+        if len(self.sl_swing_lookback_range) > 1:
+            ranges["sl_swing_lookback"] = self.sl_swing_lookback_range
         return ranges
 
     @property
@@ -361,4 +383,8 @@ class MomentumGridConfig:
             "ema_fast":             ("use_ema_ribbon",),
             "ema_mid":              ("use_ema_ribbon",),
             "ema_slow":             ("use_ema_ribbon",),
+            # SL numeric params are irrelevant when use_vbt_sl=False.
+            "sl_n_atr_init":        ("use_vbt_sl",),
+            "sl_n_atr_trail":       ("use_vbt_sl",),
+            "sl_swing_lookback":    ("use_vbt_sl",),
         }

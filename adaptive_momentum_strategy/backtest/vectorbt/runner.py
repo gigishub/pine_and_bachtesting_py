@@ -40,6 +40,7 @@ import logging
 
 import numpy as np
 import pandas as pd
+import pandas_ta as pta
 
 from ...strategy.parameters import Parameters
 from .signals import build_vbt_arrays
@@ -74,6 +75,55 @@ def run(
 
     import vectorbt as vbt  # lazy import — avoids numba JIT cost at module load
 
+    # Build VBT-native SL arrays if enabled.
+    # When use_vbt_sl=True, the entry-candle SL is registered with VBT
+    # (sl_stop), and adjust_swing_sl_long/short_nb ratchets it inward each bar.
+    # The precomputed long_exits / short_exits still fire for explicit strategy
+    # exits (regime change, etc.) — VBT exits on whichever comes first.
+    sl_stop_long = sl_stop_short = None
+    adjust_sl_func_long = adjust_sl_func_short = None
+    adjust_sl_args_long = adjust_sl_args_short = None
+
+    if p.use_vbt_sl:
+        from ...strategy.risk.stops import compute_entry_candle_sl
+        from ...strategy.risk.stops_numba import (
+            adjust_swing_sl_long_nb,
+            adjust_swing_sl_short_nb,
+        )
+
+        raw_high  = df["High"].astype(float)
+        raw_low   = df["Low"].astype(float)
+        raw_close = df["Close"].astype(float)
+
+        atr = pta.atr(raw_high, raw_low, raw_close, length=p.sl_atr_period)
+        if atr is None:
+            logger.warning("ATR returned None — skipping VBT SL (insufficient data).")
+        else:
+            sl_frac_long, sl_frac_short = compute_entry_candle_sl(
+                raw_high, raw_low, raw_close, atr,
+                n_atr_init=p.sl_n_atr_init,
+            )
+
+            # Shift fracs by 1 to align with the shifted entry signal
+            if fill_at_next_open:
+                sl_frac_long  = sl_frac_long.shift(1).bfill()
+                sl_frac_short = sl_frac_short.shift(1).bfill()
+
+            swing_low  = raw_low.rolling(p.sl_swing_lookback).min()
+            swing_high = raw_high.rolling(p.sl_swing_lookback).max()
+
+            # Numba requires 2D C-contiguous float64 arrays (bars × 1 for single symbol)
+            swing_low_2d  = np.ascontiguousarray(swing_low.values.reshape(-1, 1))
+            swing_high_2d = np.ascontiguousarray(swing_high.values.reshape(-1, 1))
+            atr_2d        = np.ascontiguousarray(atr.values.reshape(-1, 1))
+
+            sl_stop_long  = sl_frac_long.values
+            sl_stop_short = sl_frac_short.values
+            adjust_sl_func_long  = adjust_swing_sl_long_nb
+            adjust_sl_func_short = adjust_swing_sl_short_nb
+            adjust_sl_args_long  = (swing_low_2d,  atr_2d, p.sl_n_atr_trail)
+            adjust_sl_args_short = (swing_high_2d, atr_2d, p.sl_n_atr_trail)
+
     if fill_at_next_open:
         long_entries  = arrs["long_entries"].shift(1, fill_value=False).astype(bool)
         long_exits    = arrs["long_exits"].shift(1, fill_value=False).astype(bool)
@@ -101,6 +151,19 @@ def run(
         index=long_entries.index,
     )
 
+    # Only pass SL kwargs when the SL was successfully built — VBT rejects None.
+    active_sl_stop  = sl_stop_long  if p.use_long else sl_stop_short
+    active_sl_func  = adjust_sl_func_long  if p.use_long else adjust_sl_func_short
+    active_sl_args  = adjust_sl_args_long  if p.use_long else adjust_sl_args_short
+
+    sl_kwargs: dict = {}
+    if active_sl_stop is not None and active_sl_func is not None:
+        sl_kwargs = {
+            "sl_stop":           active_sl_stop,
+            "adjust_sl_func_nb": active_sl_func,
+            "adjust_sl_args":    active_sl_args,
+        }
+
     return vbt.Portfolio.from_signals(
         close=fill_price,
         high=df["High"].astype(float),
@@ -116,6 +179,7 @@ def run(
         init_cash=init_cash,
         upon_opposite_entry="close",
         freq=freq,
+        **sl_kwargs,
     )
 
 
