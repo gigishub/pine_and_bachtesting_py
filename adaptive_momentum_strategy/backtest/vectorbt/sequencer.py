@@ -131,7 +131,7 @@ def run_sequential(
                 dataset=dataset,
                 min_bars=config.min_bars,
             )
-        except ValueError as exc:
+        except (ValueError, OSError, RuntimeError) as exc:
             logger.warning("Skipping %s — %s", dataset.condition_key, exc)
             outer.write(f"  ⚠ Skipped {dataset.condition_key}: {exc}")
             continue

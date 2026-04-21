@@ -150,6 +150,11 @@ class MomentumGridConfig:
     chandelier_atr_mult_range: tuple[float, ...] = (3.0,)
     cmf_threshold_range:       tuple[float, ...] = (0.05,)
     trail_atr_mult_range:      tuple[float, ...] = (2.0,)
+    # EMA ribbon periods — only matter when use_ema_ribbon / use_ema_ribbon_short is True;
+    # deduplication in the grid builder collapses them to one combo when the flag is off.
+    ema_fast_range: tuple[int, ...] = (20,)
+    ema_mid_range:  tuple[int, ...] = (50,)
+    ema_slow_range: tuple[int, ...] = (200,)
 
     # --- Direction ---
     # enable_long/enable_short control whether long and short flags are swept.
@@ -276,6 +281,9 @@ class MomentumGridConfig:
             ("chandelier_atr_mult", self.chandelier_atr_mult_range),
             ("cmf_threshold",       self.cmf_threshold_range),
             ("trail_atr_mult",      self.trail_atr_mult_range),
+            ("ema_fast",            self.ema_fast_range),
+            ("ema_mid",             self.ema_mid_range),
+            ("ema_slow",            self.ema_slow_range),
         ]
         for name, rng in _numeric:
             status = "swept" if len(rng) > 1 else "pinned"
@@ -303,6 +311,12 @@ class MomentumGridConfig:
             names.append("cmf_threshold")
         if len(self.trail_atr_mult_range) > 1:
             names.append("trail_atr_mult")
+        if len(self.ema_fast_range) > 1:
+            names.append("ema_fast")
+        if len(self.ema_mid_range) > 1:
+            names.append("ema_mid")
+        if len(self.ema_slow_range) > 1:
+            names.append("ema_slow")
         return tuple(names)
 
     @property
@@ -321,6 +335,12 @@ class MomentumGridConfig:
             ranges["cmf_threshold"] = self.cmf_threshold_range
         if len(self.trail_atr_mult_range) > 1:
             ranges["trail_atr_mult"] = self.trail_atr_mult_range
+        if len(self.ema_fast_range) > 1:
+            ranges["ema_fast"] = self.ema_fast_range
+        if len(self.ema_mid_range) > 1:
+            ranges["ema_mid"] = self.ema_mid_range
+        if len(self.ema_slow_range) > 1:
+            ranges["ema_slow"] = self.ema_slow_range
         return ranges
 
     @property
@@ -335,4 +355,10 @@ class MomentumGridConfig:
             "cmf_threshold":        ("use_cmf",),
             "chandelier_atr_mult":  ("use_chandelier",),
             "trail_atr_mult":       ("use_trailing_stop",),
+            # EMA periods collapse to baseline when use_ema_ribbon is off.
+            # In long-only runs this is exact; in combined runs the short EMA
+            # ribbon may still be active — an acceptable minor under-deduplication.
+            "ema_fast":             ("use_ema_ribbon",),
+            "ema_mid":              ("use_ema_ribbon",),
+            "ema_slow":             ("use_ema_ribbon",),
         }

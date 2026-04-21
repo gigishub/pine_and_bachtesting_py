@@ -97,9 +97,20 @@ def fetch_bybit_candles_chunk(
         params["end"] = _parse_ts(end_time)
 
     for attempt in range(_MAX_RETRIES):
-        resp = requests.get(url, params=params, timeout=10)
-        resp.raise_for_status()
-        data = resp.json()
+        try:
+            resp = requests.get(url, params=params, timeout=20)
+            resp.raise_for_status()
+            data = resp.json()
+        except requests.exceptions.RequestException as exc:
+            wait = _RETRY_BACKOFF_BASE * (2 ** attempt)
+            logger.warning(
+                "Network error for %s (attempt %d/%d): %s. Retrying in %.1fs.",
+                symbol_norm, attempt + 1, _MAX_RETRIES, exc, wait,
+            )
+            if attempt < _MAX_RETRIES - 1:
+                time.sleep(wait)
+                continue
+            raise
 
         ret_code = data.get("retCode") or data.get("ret_code")
 
@@ -122,7 +133,7 @@ def fetch_bybit_candles_chunk(
         return payload
 
     raise RuntimeError(
-        f"Bybit rate limit not resolved after {_MAX_RETRIES} retries for {symbol_norm}"
+        f"Bybit API not resolved after {_MAX_RETRIES} retries for {symbol_norm}"
     )
 
 
@@ -160,7 +171,13 @@ def fetch_all_bybit_candles(
             datetime.fromtimestamp(current_to / 1000, timezone.utc).strftime("%Y-%m-%d %H:%M:%S"),
         )
         if not chunk:
-            break
+            # Symbol may not be listed yet — advance past this window and try the next.
+            # Once listed, subsequent windows will return data.  If we have already
+            # collected some candles and hit empty, we are past the end of data.
+            if candles:
+                break
+            current_from = current_to + step
+            continue
 
         ordered_chunk = sorted(chunk, key=_candle_timestamp)
         candles.extend(ordered_chunk)
@@ -170,8 +187,10 @@ def fetch_all_bybit_candles(
             break
 
         current_from = last_ts + step
-        if len(chunk) < 200:
-            break
+        # Do NOT break on len(chunk) < 200 here — a partial chunk may mean the
+        # pair was just listed (first window has fewer bars than the limit).
+        # Termination is handled by: current_from > end_ts, or the empty-chunk
+        # guard above (if candles: break) on the next iteration.
 
     if not candles:
         return pd.DataFrame(columns=["Open", "High", "Low", "Close", "Volume"])

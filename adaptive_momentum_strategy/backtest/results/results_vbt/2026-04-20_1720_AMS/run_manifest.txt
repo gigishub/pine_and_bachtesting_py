@@ -1,0 +1,40 @@
+Config:      2026-04-20_1720_AMS
+Symbols:     BTCUSDT, ETHUSDT, XRPUSDT, BNBUSDT, SOLUSDT, TRXUSDT, DOGEUSDT, ADAUSDT, AVAXUSDT, LINKUSDT
+Timeframes:  1h, 4H
+Period:      2020-09-01 00:00:00  →  latest
+Direction:   long=ON  short=OFF
+Exclusive:   none (combination mode)
+
+Boolean Flags
+----------------------------------------------------------
+  FLAG                         STATUS         VALUE(S)
+  --------------------------- ------------- ------------
+  use_adx                      swept        False / True
+  use_ema_ribbon               swept        False / True
+  use_donchian                 pinned OFF   False
+  use_volume_profile           pinned ON    True
+  use_cmf                      pinned ON    True
+  use_power_candle             pinned OFF   False
+  use_chandelier               swept        False / True
+  use_psar                     swept        False / True
+  use_bbands                   pinned OFF   False
+  use_trailing_stop            swept        False / True
+  use_ema_ribbon_short         pinned OFF   False
+  use_donchian_short           pinned OFF   False
+  use_volume_profile_short     pinned OFF   False
+  use_cmf_short                pinned OFF   False
+  use_power_candle_short       pinned OFF   False
+  use_chandelier_short         pinned OFF   False
+  use_psar_short               pinned OFF   False
+  use_bbands_short             pinned OFF   False
+  use_trailing_stop_short      pinned OFF   False
+
+Numeric Sweeps
+----------------------------------------------------------
+  adx_threshold                pinned       25.0
+  chandelier_atr_mult          pinned       3.0
+  cmf_threshold                pinned       0.05
+  trail_atr_mult               pinned       2.0
+
+Grid size (upper bound, before validity filtering):  32 combos
+Conditions: 10 symbols × 2 TF = 20

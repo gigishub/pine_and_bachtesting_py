@@ -1,20 +1,29 @@
-"""Streamlit Phase 1 dashboard — exclusive-mode sweep analysis.
+"""Streamlit Phase 1 dashboard — exclusive-mode sweep analysis (v2).
 
-Covers sections 1–5 (mapped from original §1, 2, 3, 8, 9).
-Zero dependency on sklearn, shap, statsmodels, importance.py, significance.py,
-scorer.py, or report.py.
+Sections (each expandable, numbered 1–6):
+  1. Performance per Timeframe    — per-TF combo pass-rate bar charts (diagnostic)
+  2. Universal Combos per TF     — cross-coin combo overlap
+  3. Weighted Robustness Score   — decision driver; pick the winning signature here
+  4. Parameter Stability         — toggle frequency in top-5 combos
+  5. Top Passing Combos          — raw metric table for passing rows
+  6. Threshold Sweep             — sensitivity analysis with absolute-count robustness slider
+
+Changes from v1:
+  - §1 Overall Effectiveness removed (redundant with §3 Weighted Score)
+  - Coverage Summary removed from §2 per-TF charts (redundant with §3 breadth)
+  - "Min combo pass rate (%)" sidebar slider removed
+  - §6 Threshold Sweep: "Robust" line controlled by per-sweep absolute-count slider
 
 Run with:
-    streamlit run strategy_evaluation/streamlit_app_phase1.py
+    streamlit run strategy_evaluation/streamlit_app_phase1_v2.py
 """
 
 from __future__ import annotations
 
+import dataclasses
 import sys
 from pathlib import Path
 
-# Ensure the project root is on sys.path so `strategy_evaluation` is importable
-# regardless of the working directory when `streamlit run` is invoked.
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from collections import defaultdict
@@ -34,10 +43,12 @@ from strategy_evaluation.consistency import (
 )
 from strategy_evaluation.loader import load_data_period, load_run_dir, validate_columns
 from strategy_evaluation.metrics import annotate_dataframe
+from strategy_evaluation.scoring import compute_combo_weighted_scores
+from strategy_evaluation.sig_alias import sig_to_alias
 
 # ── Page config ──────────────────────────────────────────────────────────────
 st.set_page_config(
-    page_title="Strategy Robustness — Phase 1",
+    page_title="Strategy Robustness — Phase 1 v2",
     page_icon="📊",
     layout="wide",
 )
@@ -109,84 +120,28 @@ def _add_category_col(df: pd.DataFrame, toggle_col: str = "Toggle") -> pd.DataFr
     return df
 
 
-# ── Section renderers ─────────────────────────────────────────────────────────
-
-def _section_overall_symbol(cfg: RobustnessConfig, df: pd.DataFrame) -> None:
-    """Section 1 — overall combo pass rate per coin across ALL timeframes combined."""
-    n_total    = len(df)
-    n_symbols  = df[cfg.col_symbol].nunique()
-    n_tfs      = df[cfg.col_timeframe].nunique()
-    n_params   = n_total // (n_symbols * n_tfs) if (n_symbols * n_tfs) else 0
-    n_per_coin = n_total // n_symbols if n_symbols else 0
-    floor      = cfg.min_combo_pass_rate
-
-    _info(
-        f"```\n"
-        f"data: {n_symbols} coins × {n_tfs} TFs × {n_params} params = {n_total:,} combos\n"
-        f"bar:  n_pass / {n_per_coin} combos per coin  (all TFs pooled)\n"
-        f"floor ≥ {floor:.0%}  →  coin ✅  |  below → coin ❌\n"
-        f"```\n"
-        f"⚙️ `SQN≥{cfg.min_sqn}  PF≥{cfg.min_profit_factor}  trades≥{cfg.min_trades}  "
-        f"win%≥{cfg.min_win_rate:.0f}  sharpe≥{cfg.min_sharpe}  max_dd≤{cfg.max_max_drawdown:.0f}%`"
-    )
-
-    combo_rates = (
-        df.groupby(cfg.col_symbol)["_passes"].mean()
-        if "_passes" in df.columns
-        else pd.Series(dtype=float)
-    )
-    rows = []
-    for sym in sorted(combo_rates.index):
-        n_sym_total = int((df[cfg.col_symbol] == sym).sum())
-        n_sym_pass  = int(df[df[cfg.col_symbol] == sym]["_passes"].sum()) if "_passes" in df.columns else 0
-        rows.append({
-            "Symbol": sym,
-            "Combo pass rate": float(combo_rates.get(sym, 0)),
-            "n_total": n_sym_total,
-            "n_pass":  n_sym_pass,
-        })
-    df_plot = pd.DataFrame(rows)
-    df_plot["Status"] = df_plot["Combo pass rate"].apply(
-        lambda r: "✅ Pass" if r >= floor else "❌ Fail"
-    )
-
-    fig = px.bar(
-        df_plot, x="Symbol", y="Combo pass rate",
-        color="Status",
-        color_discrete_map={"✅ Pass": "#2ecc71", "❌ Fail": "#e74c3c"},
-        title=f"Overall combo pass rate per coin  (all {n_tfs} TFs combined)",
-        labels={"Combo pass rate": f"Pass rate  (100% = {n_per_coin} combos)"},
-        custom_data=["n_total", "n_pass"],
-    )
-    fig.update_traces(
-        hovertemplate="%{x}: %{customdata[1]} / %{customdata[0]} pass  (%{y:.0%})<extra></extra>"
-    )
-    fig.add_hline(
-        y=floor, line_dash="dash", line_color="white",
-        annotation_text=f"Floor ({floor:.0%})", annotation_position="top right",
-    )
-    fig.update_layout(yaxis_range=[0, 1.05], yaxis_tickformat=".0%", showlegend=True)
-    st.plotly_chart(fig, use_container_width=True)
-
+# ── Section 1 — Per-TF charts ─────────────────────────────────────────────────
 
 def _section_per_tf_charts(cfg: RobustnessConfig, df: pd.DataFrame) -> None:
-    """Section 2 — one bar chart per tested timeframe + coverage summary."""
+    """Section 1 — one bar chart per tested timeframe showing pass rate per coin.
+
+    No pass/fail floor coloring; diagnostic only — shows *why* §3 scores are
+    high or low on specific timeframes.
+    """
     n_total           = len(df)
     n_symbols         = df[cfg.col_symbol].nunique()
     n_tfs             = df[cfg.col_timeframe].nunique()
     n_params          = n_total // (n_symbols * n_tfs) if (n_symbols * n_tfs) else 0
-    n_per_tf          = n_total // n_tfs if n_tfs else 0
-    n_per_coin_per_tf = n_per_tf // n_symbols if n_symbols else 0
-    floor             = cfg.min_combo_pass_rate
+    n_per_coin_per_tf = n_total // (n_tfs * n_symbols) if (n_tfs * n_symbols) else 0
     col_sym           = cfg.col_symbol
     col_tf            = cfg.col_timeframe
 
     _info(
         f"```\n"
-        f"same {n_total:,} combos — split by TF\n"
-        f"each TF: {n_symbols} coins × {n_params} params = {n_per_tf:,} combos per TF\n"
-        f"bar: n_pass / {n_per_coin_per_tf} combos per (coin, TF)\n"
-        f"floor ≥ {floor:.0%}  →  coin/TF ✅  |  below → ❌\n"
+        f"data: {n_symbols} coins × {n_tfs} TFs × {n_params} params = {n_total:,} combos\n"
+        f"each bar: n_pass / {n_per_coin_per_tf} combos for that (coin, TF)\n\n"
+        f"use this chart to see which TF or coin is dragging scores down\n"
+        f"decision: go to §3 Weighted Robustness Score to pick the winning signature\n"
         f"```\n"
         f"⚙️ `SQN≥{cfg.min_sqn}  PF≥{cfg.min_profit_factor}  trades≥{cfg.min_trades}  "
         f"win%≥{cfg.min_win_rate:.0f}  sharpe≥{cfg.min_sharpe}  max_dd≤{cfg.max_max_drawdown:.0f}%`"
@@ -194,7 +149,6 @@ def _section_per_tf_charts(cfg: RobustnessConfig, df: pd.DataFrame) -> None:
 
     timeframes  = sorted(df[col_tf].unique())
     all_symbols = sorted(df[col_sym].unique())
-    coin_tf_pass: dict[str, list[str]] = {sym: [] for sym in all_symbols}
 
     for tf in timeframes:
         tf_df      = df[df[col_tf] == tf]
@@ -207,23 +161,17 @@ def _section_per_tf_charts(cfg: RobustnessConfig, df: pd.DataFrame) -> None:
         for sym in all_symbols:
             n_sym_total = int((tf_df[col_sym] == sym).sum())
             n_sym_pass  = int(tf_df[tf_df[col_sym] == sym]["_passes"].sum()) if "_passes" in tf_df.columns else 0
-            rate        = float(coin_rates.get(sym, 0))
-            passed      = rate >= floor
-            if passed:
-                coin_tf_pass[sym].append(str(tf))
             rows.append({
-                "Symbol": sym,
-                "Combo pass rate": rate,
-                "n_total": n_sym_total,
-                "n_pass":  n_sym_pass,
-                "Status":  "✅ Pass" if passed else "❌ Fail",
+                "Symbol":          sym,
+                "Combo pass rate": float(coin_rates.get(sym, 0)),
+                "n_total":         n_sym_total,
+                "n_pass":          n_sym_pass,
             })
 
         df_tf = pd.DataFrame(rows)
         fig = px.bar(
             df_tf, x="Symbol", y="Combo pass rate",
-            color="Status",
-            color_discrete_map={"✅ Pass": "#2ecc71", "❌ Fail": "#e74c3c"},
+            color_discrete_sequence=["#3498db"],
             title=f"TF {tf} — combo pass rate per coin  ({n_per_coin_per_tf} combos / coin)",
             labels={"Combo pass rate": f"Pass rate  (100% = {n_per_coin_per_tf} combos)"},
             custom_data=["n_total", "n_pass"],
@@ -231,51 +179,14 @@ def _section_per_tf_charts(cfg: RobustnessConfig, df: pd.DataFrame) -> None:
         fig.update_traces(
             hovertemplate="%{x}: %{customdata[1]} / %{customdata[0]} pass  (%{y:.0%})<extra></extra>"
         )
-        fig.add_hline(
-            y=floor, line_dash="dash", line_color="white",
-            annotation_text=f"Floor ({floor:.0%})", annotation_position="top right",
-        )
-        fig.update_layout(yaxis_range=[0, 1.05], yaxis_tickformat=".0%", showlegend=True)
+        fig.update_layout(yaxis_range=[0, 1.05], yaxis_tickformat=".0%", showlegend=False)
         st.plotly_chart(fig, use_container_width=True)
 
-    st.subheader("Coverage summary")
-    coverage_rows = []
-    for sym in all_symbols:
-        passing_tfs = coin_tf_pass[sym]
-        n = len(passing_tfs)
-        if n == n_tfs:
-            verdict = f"✅ All {n_tfs} TFs"
-        elif n == 0:
-            verdict = "❌ None"
-        else:
-            verdict = f"⚠️ {n}/{n_tfs}"
-        coverage_rows.append({
-            "Coin":        sym,
-            "Passing TFs": ", ".join(passing_tfs) if passing_tfs else "—",
-            "Count":       f"{n}/{n_tfs}",
-            "Verdict":     verdict,
-        })
-    st.dataframe(pd.DataFrame(coverage_rows), use_container_width=True, hide_index=True)
 
-    by_count: dict[int, list[str]] = defaultdict(list)
-    for sym in all_symbols:
-        by_count[len(coin_tf_pass[sym])].append(sym)
-
-    for count in sorted(by_count.keys(), reverse=True):
-        group = sorted(by_count[count])
-        if count == n_tfs:
-            st.caption(f"✅ {len(group)} coin(s) pass all {n_tfs} TFs — strongest candidates: {', '.join(group)}")
-        elif count == 0:
-            st.caption(f"❌ {len(group)} coin(s) pass 0 TFs — skip entirely: {', '.join(group)}")
-        else:
-            st.caption(f"⚠️ {len(group)} coin(s) pass {count}/{n_tfs} TFs — timeframe-specific: {', '.join(group)}")
-
+# ── Section 2 — Universal combos per TF ──────────────────────────────────────
 
 def _section_combo_overlap(cfg: RobustnessConfig, df: pd.DataFrame) -> None:
-    """Section 2b — for each timeframe, which exact parameter signatures pass on multiple coins?
-
-    Answers: "Does this combo on ETHUSDT 4H also pass on ADAUSDT 4H and SOLUSDT 4H?"
-    """
+    """Section 2 — for each TF, which exact parameter signatures pass on multiple coins?"""
     if "_passes" not in df.columns or not df["_passes"].any():
         st.info("No combos pass the current thresholds — relax the sliders.")
         return
@@ -323,7 +234,6 @@ def _section_combo_overlap(cfg: RobustnessConfig, df: pd.DataFrame) -> None:
             st.caption(f"No passing combos on {tf} with current thresholds.")
             continue
 
-        # Pivot: rows = signature, cols = symbol → 1 if passes, 0 if not
         pivot = (
             tf_pass.groupby([col_sig, col_sym])
             .size()
@@ -331,7 +241,6 @@ def _section_combo_overlap(cfg: RobustnessConfig, df: pd.DataFrame) -> None:
             .clip(upper=1)
             .astype(int)
         )
-        # Ensure every tested coin appears even if none of its combos passed
         for sym in all_symbols:
             if sym not in pivot.columns:
                 pivot[sym] = 0
@@ -352,7 +261,6 @@ def _section_combo_overlap(cfg: RobustnessConfig, df: pd.DataFrame) -> None:
             f"**{n_all_coins}** pass on all {n_coins} coins"
         )
 
-        # Heatmap
         heat = pivot[coin_cols]
         fig = px.imshow(
             heat,
@@ -368,7 +276,6 @@ def _section_combo_overlap(cfg: RobustnessConfig, df: pd.DataFrame) -> None:
         fig.update_yaxes(tickfont_size=10)
         st.plotly_chart(fig, use_container_width=True)
 
-        # Detailed table: ✅/blank per coin + # Coins
         disp = pd.DataFrame(index=pivot.index)
         for sym in coin_cols:
             disp[sym] = pivot[sym].map({1: "✅", 0: ""})
@@ -377,60 +284,12 @@ def _section_combo_overlap(cfg: RobustnessConfig, df: pd.DataFrame) -> None:
         st.dataframe(disp.reset_index(), use_container_width=True, hide_index=True)
 
 
-def compute_combo_weighted_scores(df: pd.DataFrame, cfg: RobustnessConfig) -> pd.DataFrame:
-    """Compute weighted robustness scores per parameter signature.
-
-    Final Score = avg_score × (coins_passing / N) × 1.5^(n_TFs − 1)
-
-    - avg_score    : mean _score of all passing (combo, coin, TF) rows for this signature
-    - breadth      : coins_passing / N  — fraction of tested coins where this sig passes on ≥1 TF
-    - tf_multiplier: 1.5^(n_TFs − 1)  — exponential reward for cross-TF validity
-                     1 TF → ×1.0  |  2 TFs → ×1.5  |  3 TFs → ×2.25
-
-    Returns DataFrame sorted by final_score descending.
-    """
-    col_sig = cfg.col_param_sig
-    col_sym = cfg.col_symbol
-    col_tf  = cfg.col_timeframe
-
-    if "_passes" not in df.columns or col_sig not in df.columns:
-        return pd.DataFrame()
-
-    n_coins    = df[col_sym].nunique()
-    passing_df = df[df["_passes"]]
-
-    if passing_df.empty or n_coins == 0:
-        return pd.DataFrame()
-
-    records = []
-    for sig, grp in passing_df.groupby(col_sig):
-        avg_score     = float(grp["_score"].mean()) if "_score" in grp.columns else 0.0
-        coins_passing = int(grp[col_sym].nunique())
-        n_tfs         = int(grp[col_tf].nunique())
-        breadth       = coins_passing / n_coins
-        tf_multiplier = 1.5 ** (n_tfs - 1)
-        final_score   = avg_score * breadth * tf_multiplier
-        records.append({
-            "Parameter Signature": sig,
-            "avg_score":    round(avg_score, 4),
-            "coins_passing": coins_passing,
-            "n_TFs":        n_tfs,
-            "breadth":      round(breadth, 4),
-            "tf_multiplier": round(tf_multiplier, 4),
-            "final_score":  round(final_score, 4),
-        })
-
-    return (
-        pd.DataFrame(records)
-        .sort_values("final_score", ascending=False)
-        .reset_index(drop=True)
-    )
-
+# ── Section 3 — Weighted Robustness Score ────────────────────────────────────
 
 def _section_weighted_score(cfg: RobustnessConfig, df: pd.DataFrame) -> pd.DataFrame:
-    """Section 2c — weighted robustness score per parameter signature.
+    """Section 3 — weighted robustness score per parameter signature.
 
-    Returns the scored DataFrame so the report generator can include it.
+    Returns the scored DataFrame for the report generator.
     """
     n_coins  = df[cfg.col_symbol].nunique()
     n_tfs    = df[cfg.col_timeframe].nunique()
@@ -464,26 +323,27 @@ def _section_weighted_score(cfg: RobustnessConfig, df: pd.DataFrame) -> pd.DataF
         key="weighted_top_n",
     )
     display = scored.head(top_n).copy()
+    display["Alias"] = display["Parameter Signature"].apply(sig_to_alias)
 
-    # ── Bar chart: final_score per signature, colored by n_TFs ───────────────
     fig_bar = px.bar(
         display,
         x="final_score",
-        y="Parameter Signature",
+        y="Alias",
         orientation="h",
         color="n_TFs",
         color_continuous_scale="Viridis",
         title=f"Top {top_n} signatures by Weighted Robustness Score",
         labels={
             "final_score": "Final Score",
-            "Parameter Signature": "",
+            "Alias": "",
             "n_TFs": "# TFs",
         },
-        custom_data=["avg_score", "coins_passing", "n_TFs", "tf_multiplier", "breadth"],
+        custom_data=["avg_score", "coins_passing", "n_TFs", "tf_multiplier", "breadth", "Parameter Signature"],
     )
     fig_bar.update_traces(
         hovertemplate=(
             "<b>%{y}</b><br>"
+            "Full sig: %{customdata[5]}<br>"
             "Final Score: %{x:.4f}<br>"
             "Avg _score: %{customdata[0]:.4f}<br>"
             "Coins passing: %{customdata[1]} / " + str(n_coins) + "  (breadth %{customdata[4]:.0%})<br>"
@@ -496,7 +356,6 @@ def _section_weighted_score(cfg: RobustnessConfig, df: pd.DataFrame) -> pd.DataF
     )
     st.plotly_chart(fig_bar, use_container_width=True)
 
-    # ── Scatter: breadth vs avg_score, bubble = final_score, color = n_TFs ──
     fig_scatter = px.scatter(
         display,
         x="breadth",
@@ -511,12 +370,11 @@ def _section_weighted_score(cfg: RobustnessConfig, df: pd.DataFrame) -> pd.DataF
             "avg_score": "Avg Quality Score",
             "n_TFs":     "# TFs",
         },
-        hover_data={"final_score": ":.4f", "tf_multiplier": ":.3f"},
+        hover_data={"final_score": ":.4f", "tf_multiplier": ":.3f", "Alias": True},
     )
     fig_scatter.update_layout(xaxis_range=[-0.05, 1.05])
     st.plotly_chart(fig_scatter, use_container_width=True)
 
-    # ── Full table ────────────────────────────────────────────────────────────
     st.dataframe(display, use_container_width=True, hide_index=True)
     st.caption(
         f"{len(scored)} signatures with ≥1 passing combo.  "
@@ -527,8 +385,10 @@ def _section_weighted_score(cfg: RobustnessConfig, df: pd.DataFrame) -> pd.DataF
     return scored
 
 
+# ── Section 4 — Toggle frequency ─────────────────────────────────────────────
+
 def _section_toggle_frequency(tog_freq: dict[str, int]) -> None:
-    """Section 3 — toggle frequency in top-5 combos per symbol/timeframe."""
+    """Section 4 — toggle frequency in top-5 combos per symbol/timeframe."""
     _info(
         "```\n"
         "# top-5 combos per (coin, TF) — from passing combos only  ⚙️ threshold-sensitive\n"
@@ -557,8 +417,10 @@ def _section_toggle_frequency(tog_freq: dict[str, int]) -> None:
     st.plotly_chart(fig, use_container_width=True)
 
 
+# ── Section 5 — Top passing combos ───────────────────────────────────────────
+
 def _section_top_combos(df: pd.DataFrame, cfg: RobustnessConfig) -> None:
-    """Section 4 — all combos that pass current thresholds."""
+    """Section 5 — all combos that pass current thresholds."""
     _n_pass = int(df["_passes"].sum()) if "_passes" in df.columns else 0
     _n_all  = len(df)
     _info(
@@ -594,12 +456,18 @@ def _section_top_combos(df: pd.DataFrame, cfg: RobustnessConfig) -> None:
     ]
     available = [c for c in show_cols if c in view.columns]
     sort_col  = "_score" if "_score" in view.columns else available[0]
-    st.dataframe(
-        view[available].sort_values(sort_col, ascending=False).reset_index(drop=True),
-        use_container_width=True,
-    )
+    tbl = view[available].sort_values(sort_col, ascending=False).reset_index(drop=True)
+    if cfg.col_param_sig in tbl.columns:
+        tbl.insert(
+            tbl.columns.get_loc(cfg.col_param_sig),
+            "Alias",
+            tbl[cfg.col_param_sig].apply(sig_to_alias),
+        )
+    st.dataframe(tbl, use_container_width=True)
     st.caption(f"{len(view)} passing combos shown.")
 
+
+# ── Report formatting ─────────────────────────────────────────────────────────
 
 def _fmt_cell(value: object) -> str:
     """Format a table cell value for Markdown output."""
@@ -613,34 +481,34 @@ def _format_phase1_report(
     results_dir: str,
     run_ts: str,
     cfg: RobustnessConfig,
-    sym_rates: dict[str, float],
-    tf_rates: dict[str, float],
     tog_freq: dict[str, int],
     n_total: int,
     n_passing: int,
     n_symbols: int,
     n_timeframes: int,
     n_param_sets: int,
+    sweep_min_passing_combos: int = 1,
     df: pd.DataFrame | None = None,
     sweep_data: dict[str, tuple[pd.DataFrame, float]] | None = None,
     weighted_scores: pd.DataFrame | None = None,
+    data_period: tuple[str, str] | None = None,
 ) -> str:
-    """Generate a comprehensive Markdown Phase 1 report matching everything visible in the app.
+    """Generate a Markdown Phase 1 report matching all visible sections.
 
     Sections:
         Header / Passing Criteria / Overview
-        §1  Overall Strategy Effectiveness  (per-coin combo pass rates)
-        §2  Performance per Timeframe       (per-coin per-TF tables + coverage summary)
-        §2b Universal Combos per Timeframe  (cross-coin combo overlap pivot)
-        §2c Weighted Robustness Score       (final_score = quality × breadth × TF multiplier)
-        §3  Parameter Stability             (toggle frequency by category)
-        §4  Top Passing Combos              (full table sorted by _score)
-        §5  Threshold Sweep                 (two-line sweep tables for SQN, PF, # Trades)
+        1.  Performance per Timeframe       (per-coin per-TF bar charts)
+        2.  Universal Combos per TF         (cross-coin combo overlap)
+        3.  Weighted Robustness Score       (final_score = quality × breadth × TF)
+        4.  Parameter Stability             (toggle frequency by category)
+        5.  Top Passing Combos              (full table sorted by _score)
+        6.  Threshold Sweep                 (SQN, PF, # Trades sensitivity)
     """
-    floor      = cfg.min_combo_pass_rate
     pct_pass   = f"{n_passing / n_total:.1%}" if n_total else "—"
-    n_per_coin = n_total // n_symbols if n_symbols else 0
     n_per_cpt  = n_total // (n_symbols * n_timeframes) if (n_symbols * n_timeframes) else 0
+    # Combos per coin pooled across all TFs (used in sweep floor description)
+    n_per_coin = n_total // n_symbols if n_symbols else 0
+    floor_pct  = sweep_min_passing_combos / n_per_coin if n_per_coin else 0.0
 
     lines: list[str] = []
 
@@ -649,13 +517,16 @@ def _format_phase1_report(
 
     # ── Header ─────────────────────────────────────────────────────────────────
     lines.append(f"# Phase 1 Robustness Report — {label}")
-    lines.append(f"\n**Generated:** {run_ts}  \n**Results dir:** `{results_dir}`\n")
+    _period_line = (
+        f"  \n**Data period:** {data_period[0]} → {data_period[1]}"
+        if data_period else ""
+    )
+    lines.append(f"\n**Generated:** {run_ts}  \n**Results dir:** `{results_dir}`{_period_line}\n")
 
     # ── Passing Criteria ───────────────────────────────────────────────────────
     h("Passing Criteria")
     lines.append(
-        "> A **combo passes** if ALL thresholds below are met simultaneously.  \n"
-        "> A **symbol or timeframe ✅** if ≥ the combo pass rate floor of its combos pass.\n"
+        "> A **combo passes** if ALL thresholds below are met simultaneously.\n"
     )
     lines.append("| Metric | Value |")
     lines.append("|--------|-------|")
@@ -665,14 +536,12 @@ def _format_phase1_report(
     lines.append(f"| Min Win Rate | {cfg.min_win_rate:.0f}% |")
     lines.append(f"| Min Sharpe | {cfg.min_sharpe} |")
     lines.append(f"| Max Drawdown | {cfg.max_max_drawdown:.0f}% |")
-    lines.append(f"| Min Combo Pass Rate Floor | {floor:.0%} |")
+    lines.append(f"| Sweep robustness floor | ≥ {sweep_min_passing_combos} combos per symbol |")
     lines.append("")
     lines.append("```")
     lines.append("combo passes if:")
     lines.append(f"  SQN ≥ {cfg.min_sqn}  AND  PF ≥ {cfg.min_profit_factor}  AND  trades ≥ {cfg.min_trades}")
     lines.append(f"  AND  win_rate ≥ {cfg.min_win_rate:.0f}%  AND  sharpe ≥ {cfg.min_sharpe}  AND  max_dd ≤ {cfg.max_max_drawdown:.0f}%")
-    lines.append("")
-    lines.append(f"symbol/TF ✅  if  pass_rate ≥ {floor:.0%}  of its combos")
     lines.append("```")
 
     # ── Overview ───────────────────────────────────────────────────────────────
@@ -683,43 +552,14 @@ def _format_phase1_report(
         f"**{n_passing:,} pass ({pct_pass})** with current thresholds"
     )
 
-    # ── §1 Overall Strategy Effectiveness ─────────────────────────────────────
-    h("§1. Overall Strategy Effectiveness")
+    # ── 1. Performance per Timeframe ──────────────────────────────────────────
+    h("1. Performance per Timeframe")
     lines.append(
         "_How to read:_\n"
         "```\n"
         f"data: {n_symbols} coins × {n_timeframes} TFs × {n_param_sets} params = {n_total:,} combos\n"
-        f"bar:  n_pass / {n_per_coin} combos per coin  (all TFs pooled)\n"
-        f"floor ≥ {floor:.0%}  →  coin ✅  |  below → coin ❌\n"
-        f"SQN≥{cfg.min_sqn}  PF≥{cfg.min_profit_factor}  trades≥{cfg.min_trades}  "
-        f"win%≥{cfg.min_win_rate:.0f}  sharpe≥{cfg.min_sharpe}  max_dd≤{cfg.max_max_drawdown:.0f}%\n"
-        "```\n"
-    )
-    lines.append("| Symbol | Pass Rate | Passes | Total | Status |")
-    lines.append("|--------|-----------|--------|-------|--------|")
-    if df is not None and "_passes" in df.columns:
-        col_sym = cfg.col_symbol
-        for sym in sorted(df[col_sym].unique()):
-            sym_df      = df[df[col_sym] == sym]
-            n_sym_total = len(sym_df)
-            n_sym_pass  = int(sym_df["_passes"].sum())
-            rate        = n_sym_pass / n_sym_total if n_sym_total else 0.0
-            status      = "✅" if rate >= floor else "❌"
-            lines.append(f"| {sym} | {rate:.0%} | {n_sym_pass} | {n_sym_total} | {status} |")
-    else:
-        for sym, rate in sorted(sym_rates.items()):
-            status = "✅" if rate >= floor else "❌"
-            lines.append(f"| {sym} | {rate:.0%} | — | — | {status} |")
-
-    # ── §2 Performance per Timeframe ──────────────────────────────────────────
-    h("§2. Performance per Timeframe")
-    lines.append(
-        "_How to read:_\n"
-        "```\n"
-        f"same {n_total:,} combos — split by TF\n"
-        f"each TF: {n_symbols} coins × {n_param_sets} params = {n_per_cpt * n_symbols:,} combos per TF\n"
-        f"bar: n_pass / {n_per_cpt} combos per (coin, TF)\n"
-        f"floor ≥ {floor:.0%}  →  coin/TF ✅  |  below → ❌\n"
+        f"each bar: n_pass / {n_per_cpt} combos for that (coin, TF)\n"
+        f"use this chart to see which TF or coin is dragging scores down\n"
         "```\n"
     )
     if df is not None and "_passes" in df.columns:
@@ -727,64 +567,24 @@ def _format_phase1_report(
         col_tf     = cfg.col_timeframe
         timeframes = sorted(df[col_tf].unique())
         all_symbols = sorted(df[col_sym].unique())
-        coin_tf_pass: dict[str, list[str]] = {sym: [] for sym in all_symbols}
 
         for tf in timeframes:
             tf_df = df[df[col_tf] == tf]
             lines.append(f"### TF {tf}\n")
-            lines.append("| Symbol | Pass Rate | Passes | Total | Status |")
-            lines.append("|--------|-----------|--------|-------|--------|")
+            lines.append("| Symbol | Pass Rate | Passes | Total |")
+            lines.append("|--------|-----------|--------|-------|")
             for sym in all_symbols:
                 sym_tf = tf_df[tf_df[col_sym] == sym]
                 n_st   = len(sym_tf)
                 n_sp   = int(sym_tf["_passes"].sum()) if n_st else 0
                 rate   = n_sp / n_st if n_st else 0.0
-                status = "✅" if rate >= floor else "❌"
-                if rate >= floor:
-                    coin_tf_pass[sym].append(str(tf))
-                lines.append(f"| {sym} | {rate:.0%} | {n_sp} | {n_st} | {status} |")
+                lines.append(f"| {sym} | {rate:.0%} | {n_sp} | {n_st} |")
             lines.append("")
-
-        lines.append("### Coverage Summary\n")
-        lines.append("| Coin | Passing TFs | Count | Verdict |")
-        lines.append("|------|------------|-------|---------|")
-        n_tfs_total = len(timeframes)
-        for sym in all_symbols:
-            passing_tfs = coin_tf_pass[sym]
-            n_ptfs      = len(passing_tfs)
-            if n_ptfs == n_tfs_total:
-                verdict = f"✅ All {n_tfs_total} TFs"
-            elif n_ptfs == 0:
-                verdict = "❌ None"
-            else:
-                verdict = f"⚠️ {n_ptfs}/{n_tfs_total}"
-            lines.append(
-                f"| {sym} | {', '.join(passing_tfs) if passing_tfs else '—'} "
-                f"| {n_ptfs}/{n_tfs_total} | {verdict} |"
-            )
-        lines.append("")
-
-        by_count: dict[int, list[str]] = defaultdict(list)
-        for sym in all_symbols:
-            by_count[len(coin_tf_pass[sym])].append(sym)
-        lines.append("**TF Coverage summary:**\n")
-        for count in sorted(by_count.keys(), reverse=True):
-            group = sorted(by_count[count])
-            if count == n_tfs_total:
-                lines.append(f"- ✅ {len(group)} coin(s) pass all {n_tfs_total} TFs: {', '.join(group)}")
-            elif count == 0:
-                lines.append(f"- ❌ {len(group)} coin(s) pass 0 TFs: {', '.join(group)}")
-            else:
-                lines.append(f"- ⚠️ {len(group)} coin(s) pass {count}/{n_tfs_total} TFs: {', '.join(group)}")
     else:
-        lines.append("| Timeframe | Pass Rate | Status |")
-        lines.append("|-----------|-----------|--------|")
-        for tf, rate in sorted(tf_rates.items()):
-            status = "✅" if rate >= floor else "❌"
-            lines.append(f"| {tf} | {rate:.0%} | {status} |")
+        lines.append("_DataFrame not available._\n")
 
-    # ── §2b Universal Combos per Timeframe ─────────────────────────────────────
-    h("§2b. Universal Combos per Timeframe")
+    # ── 2. Universal Combos per TF ─────────────────────────────────────────────
+    h("2. Universal Combos per Timeframe")
     lines.append(
         "_How to read:_\n"
         "```\n"
@@ -845,23 +645,22 @@ def _format_phase1_report(
     else:
         lines.append("_No passing combos with current thresholds._\n")
 
-    # ── §2c Weighted Robustness Score ─────────────────────────────────────────
-    h("§2c. Weighted Robustness Score")
-    _n_coins_rep = n_symbols
+    # ── 3. Weighted Robustness Score ──────────────────────────────────────────
+    h("3. Weighted Robustness Score")
     _n_tfs_rep   = n_timeframes
     _max_score   = 1.0 * 1.0 * (1.5 ** (_n_tfs_rep - 1))
     lines.append(
         "_How to read:_\n"
         "```\n"
-        f"Final Score = avg_score × (coins_passing / {_n_coins_rep}) × 1.5^(n_TFs − 1)\n"
+        f"Final Score = avg_score × (coins_passing / {n_symbols}) × 1.5^(n_TFs − 1)\n"
         f"\n"
         f"avg_score     : mean _score of all passing rows for this signature\n"
-        f"breadth       : coins_passing / {_n_coins_rep}  — fraction of coins where sig passes on ≥1 TF\n"
+        f"breadth       : coins_passing / {n_symbols}  — fraction of coins where sig passes on ≥1 TF\n"
         f"tf_multiplier : 1.5^(n_TFs − 1)  — exponential bonus for cross-TF validity\n"
         f"               1 TF → ×1.0  |  2 TFs → ×1.5  |  3 TFs → ×2.25\n"
         f"\n"
         f"high final_score  =  high quality  +  many coins  +  many TFs\n"
-        f"max possible ≈ {_max_score:.3f}  (all {_n_coins_rep} coins, {_n_tfs_rep} TFs, perfect quality)\n"
+        f"max possible ≈ {_max_score:.3f}  (all {n_symbols} coins, {_n_tfs_rep} TFs, perfect quality)\n"
         "```\n"
     )
     if weighted_scores is not None and not weighted_scores.empty:
@@ -880,8 +679,8 @@ def _format_phase1_report(
     else:
         lines.append("_No weighted score data available._\n")
 
-    # ── §3 Toggle Frequency ────────────────────────────────────────────────────
-    h("§3. Parameter Stability (Toggle Frequency)")
+    # ── 4. Parameter Stability ─────────────────────────────────────────────────
+    h("4. Parameter Stability (Toggle Frequency)")
     lines.append(
         "_How to read:_\n"
         "```\n"
@@ -908,17 +707,15 @@ def _format_phase1_report(
     else:
         lines.append("_No toggle data available._\n")
 
-    # ── §4 Top Passing Combos ──────────────────────────────────────────────────
-    h("§4. Top Passing Combos")
+    # ── 5. Top Passing Combos ──────────────────────────────────────────────────
+    h("5. Top Passing Combos")
     lines.append(
         "_How to read:_\n"
         f"```\n"
         f"combos that pass ALL thresholds  ({n_passing} / {n_total})\n"
         f"SQN ≥ {cfg.min_sqn}  AND  PF ≥ {cfg.min_profit_factor}  AND  trades ≥ {cfg.min_trades}\n"
         f"AND  win_rate ≥ {cfg.min_win_rate:.0f}%  AND  sharpe ≥ {cfg.min_sharpe}  AND  max_dd ≤ {cfg.max_max_drawdown:.0f}%\n\n"
-        f"sorted by _score  (composite SQN + PF + Sharpe)\n\n"
-        f"< 5 combos  →  relax thresholds\n"
-        f"> 50 combos →  tighten thresholds\n"
+        f"sorted by _score  (composite SQN + PF + Sharpe)\n"
         f"```\n"
     )
     if df is not None and "_passes" in df.columns:
@@ -946,15 +743,18 @@ def _format_phase1_report(
     else:
         lines.append("_DataFrame not available._\n")
 
-    # ── §5 Threshold Sweep ─────────────────────────────────────────────────────
-    h("§5. Threshold Sweep")
+    # ── 6. Threshold Sweep ─────────────────────────────────────────────────────
+    h("6. Threshold Sweep")
+    _robust_label = (
+        f"Any combo passes  (N=1)"
+        if sweep_min_passing_combos == 1
+        else f"Robust (≥{sweep_min_passing_combos} combos)"
+    )
     lines.append(
         "_How to read:_\n"
         "```\n"
-        f"'Robust (≥{floor:.0%})' line  : coin ✅ if ≥ {floor:.0%} of its combos pass — robustness floor\n"
-        f"'Any combo passes' line       : coin ✅ if ≥ 1 combo passes — matches Top Combos table\n\n"
-        f"Gap between lines = coins with passing combos below the robustness floor\n"
-        f"  (they appear in Top Combos but NOT counted as robust in the symbol pass rate)\n\n"
+        f"'{_robust_label}' line : coin ✅ if ≥ {sweep_min_passing_combos} of its combos pass\n"
+        f"'Any combo passes' line       : coin ✅ if ≥ 1 combo passes\n\n"
         f"steep drop  →  threshold sensitive  →  small change excludes many coins\n"
         f"flat line   →  stable zone  →  safe to move threshold here\n"
         "```\n"
@@ -982,7 +782,7 @@ def _format_phase1_report(
             if metric_label in _sweep_explanations:
                 lines.append(_sweep_explanations[metric_label] + "\n")
             _closest = min(sweep_df["threshold"], key=lambda x: abs(float(x) - float(active_val)))
-            lines.append(f"| Min {metric_label} | Robust (≥{floor:.0%}) | Any combo passes | |")
+            lines.append(f"| Min {metric_label} | {_robust_label} | Any combo passes | |")
             lines.append("|---|---|---|---|")
             for _, r in sweep_df.iterrows():
                 t       = float(r["threshold"])
@@ -1034,20 +834,14 @@ with st.sidebar:
         max_max_dd   = st.slider("Max Drawdown (%)",   10.0, 50.0, 20.0, 1.0,
             help="Maximum allowed peak-to-trough equity drawdown. "
                  "Combos that exceed this are excluded regardless of other metrics.")
-        min_combo_pass_rate = st.slider(
-            "Min combo pass rate (%)", 0, 50, 20, 1,
-            help="Minimum percentage of combos for a symbol/timeframe that must pass "
-                 "all thresholds before it counts as 'passing'. 0 = any single combo "
-                 "is enough; 100 = every combo must pass.",
-        ) / 100.0
 
     with st.expander("⚙️ Sweep settings"):
         sqn_sweep_range    = st.slider("SQN sweep range",    0.0, 3.0, (0.5, 2.0), 0.1,
-            help="Range of Min SQN values to sweep over in Section 5.")
+            help="Range of Min SQN values to sweep over in Section 6.")
         pf_sweep_range     = st.slider("PF sweep range",     1.0, 5.0, (1.2, 3.0), 0.1,
-            help="Range of Min Profit Factor values to sweep over in Section 5.")
+            help="Range of Min Profit Factor values to sweep over in Section 6.")
         trades_sweep_range = st.slider("Trades sweep range", 1,   150,  (5, 40),    1,
-            help="Range of Min # Trades values to sweep over in Section 5.")
+            help="Range of Min # Trades values to sweep over in Section 6.")
         sweep_steps        = st.slider("Sweep steps",        5,   30,  15,         1,
             help="Number of evenly-spaced threshold values to evaluate per metric.")
 
@@ -1056,7 +850,7 @@ with st.sidebar:
     with st.expander("🕐 Timeframe Filter", expanded=_prev_raw is not None):
         if _prev_raw is not None:
             _tf_col  = RobustnessConfig().col_timeframe
-            _all_tfs = sorted(_prev_raw[_tf_col].unique().tolist())
+            _all_tfs = sorted(_prev_raw[_tf_col].dropna().unique().tolist())
             active_timeframes: list | None = [
                 tf for tf in _all_tfs
                 if st.checkbox(str(tf), value=True, key=f"tf_{tf}")
@@ -1098,7 +892,7 @@ with st.sidebar:
     with st.expander("🪙 Symbol Filter", expanded=_prev_raw is not None):
         if _prev_raw is not None:
             _sym_col_raw  = RobustnessConfig().col_symbol
-            _all_syms_raw = sorted(_prev_raw[_sym_col_raw].unique().tolist())
+            _all_syms_raw = sorted(_prev_raw[_sym_col_raw].dropna().unique().tolist())
             _sym_mode = st.radio(
                 "Mode", ["All", "1 pair", "Custom"],
                 horizontal=True, key="sym_mode",
@@ -1118,11 +912,10 @@ with st.sidebar:
 
     run_btn = st.button("▶ Run analysis", type="primary", use_container_width=True)
 
-    # ── Save report (appears after first successful run) ──────────────────────
     if st.session_state.get("_report_str"):
         st.markdown("---")
         _save_btn = st.button("💾 Save Report", use_container_width=True)
-        _fname_default = st.session_state.get("_report_filename_default", f"{label}_phase1.md")
+        _fname_default = st.session_state.get("_report_filename_default", f"{label}_phase1_v2.md")
         if st.session_state.pop("_reset_report_filename", False):
             if "p1_report_filename_input" in st.session_state:
                 del st.session_state["p1_report_filename_input"]
@@ -1150,7 +943,6 @@ if run_btn:
         min_win_rate=min_win_rate,
         min_sharpe=min_sharpe,
         max_max_dd=max_max_dd,
-        min_combo_pass_rate=min_combo_pass_rate,
         sqn_sweep_range=sqn_sweep_range,
         pf_sweep_range=pf_sweep_range,
         trades_sweep_range=trades_sweep_range,
@@ -1164,11 +956,12 @@ if run_btn:
 
 
 # ── Main ──────────────────────────────────────────────────────────────────────
-st.title("📊 Strategy Robustness — Phase 1")
+st.title("📊 Strategy Robustness — Phase 1 v2")
 st.markdown(
-    "Sweep analysis across symbols and timeframes. "
-    "Sections 1–3: effectiveness, per-TF coverage, toggle frequency. "
-    "Sections 4–5: top passing combos and threshold sweep."
+    "Sweep analysis across symbols and timeframes.  \n"
+    "**Flow:** §3 → pick winning signature · §2 → verify which coins it breaks on · "
+    "§4 → confirm key toggles · §5 → inspect raw metrics · §1 → diagnose per-TF breakdown · "
+    "§6 → check threshold sensitivity."
 )
 
 committed = st.session_state.get("committed")
@@ -1211,6 +1004,7 @@ if isinstance(c_selected_symbols, list) and len(c_selected_symbols) == 0:
     )
     st.stop()
 
+# min_combo_pass_rate=0 means any passing combo counts — the sweep section uses its own floor.
 cfg = RobustnessConfig(
     min_sqn=min_sqn,
     min_profit_factor=min_pf,
@@ -1218,7 +1012,7 @@ cfg = RobustnessConfig(
     min_win_rate=min_win_rate,
     min_sharpe=min_sharpe,
     max_max_drawdown=max_max_dd,
-    min_combo_pass_rate=c["min_combo_pass_rate"],
+    min_combo_pass_rate=0.0,
 )
 
 # ── Load raw CSV (cached by directory path) ───────────────────────────────────
@@ -1229,12 +1023,13 @@ if st.session_state.get("_cached_dir") != results_dir:
         except Exception as exc:
             st.error(f"Failed to load results directory: {exc}")
             st.stop()
-        st.session_state["_raw_df"]     = _raw_df
-        st.session_state["_cached_dir"] = results_dir
-        # Force re-render so sidebar TF/toggle expanders see _raw_df immediately.
+        st.session_state["_raw_df"]      = _raw_df
+        st.session_state["_cached_dir"]  = results_dir
+        st.session_state["_data_period"] = load_data_period(results_dir)
         st.rerun()
 
 raw_df = st.session_state["_raw_df"]
+_data_period: tuple[str, str] | None = st.session_state.get("_data_period")
 
 # ── Apply filters and annotate ────────────────────────────────────────────────
 _analysis_raw = raw_df
@@ -1269,9 +1064,7 @@ if missing_optional:
         f"{missing_optional}"
     )
 
-tog_freq  = toggle_frequency(df, cfg)
-sym_rates = symbol_pass_rate(df, cfg)
-tf_rates  = timeframe_pass_rate(df, cfg)
+tog_freq = toggle_frequency(df, cfg)
 
 _n_total      = len(df)
 _n_symbols    = df[cfg.col_symbol].nunique()
@@ -1311,147 +1104,166 @@ with st.expander("ℹ️ Passing criteria (thresholds)"):
     st.code(
         f"combo passes if:\n"
         f"  SQN ≥ {min_sqn}  AND  PF ≥ {min_pf}  AND  trades ≥ {min_trades}\n"
-        f"  AND  win_rate ≥ {min_win_rate:.0f}%  AND  sharpe ≥ {min_sharpe}  AND  max_dd ≤ {max_max_dd:.0f}%\n\n"
-        f"symbol/TF ✅  if  pass_rate ≥ {cfg.min_combo_pass_rate:.0%}  of its combos",
+        f"  AND  win_rate ≥ {min_win_rate:.0f}%  AND  sharpe ≥ {min_sharpe}  AND  max_dd ≤ {max_max_dd:.0f}%",
         language=None,
     )
 
-st.divider()
-st.subheader("1. Overall Strategy Effectiveness")
-_section_overall_symbol(cfg, df)
+# ── Sections ──────────────────────────────────────────────────────────────────
 
-st.divider()
-st.subheader("2. Performance per Timeframe")
-_section_per_tf_charts(cfg, df)
+with st.expander("1. Performance per Timeframe", expanded=True):
+    _section_per_tf_charts(cfg, df)
 
-st.divider()
-st.subheader("2b. Universal Combos per Timeframe")
-_section_combo_overlap(cfg, df)
+with st.expander("2. Universal Combos per Timeframe", expanded=True):
+    _section_combo_overlap(cfg, df)
 
-st.divider()
-st.subheader("2c. Weighted Robustness Score")
-_weighted_scored = _section_weighted_score(cfg, df)
+with st.expander("3. Weighted Robustness Score", expanded=True):
+    _weighted_scored = _section_weighted_score(cfg, df)
 
-st.divider()
-st.subheader("3. Parameter Stability (Toggle Frequency)")
-_section_toggle_frequency(tog_freq)
+with st.expander("4. Parameter Stability (Toggle Frequency)", expanded=True):
+    _section_toggle_frequency(tog_freq)
 
-st.divider()
-st.subheader("4. Top Passing Combos")
-_section_top_combos(df, cfg)
+with st.expander("5. Top Passing Combos", expanded=True):
+    _section_top_combos(df, cfg)
 
-st.divider()
-st.subheader("5. Threshold Sweep")
+# ── Section 6: Threshold Sweep ────────────────────────────────────────────────
+with st.expander("6. Threshold Sweep", expanded=True):
+    # Combos per symbol pooled across all TFs — used as slider max.
+    _n_per_coin = _n_total // _n_symbols if _n_symbols else 1
 
-_n_per_coin = _n_total // _n_symbols if _n_symbols else 0
-_n_per_cpt  = _n_total // (_n_symbols * _n_timeframes) if (_n_symbols * _n_timeframes) else 0
-_tfs_sorted = sorted(df[cfg.col_timeframe].unique())
-_tf_lines   = "\n".join(f"  All {_n_per_cpt} combos on {tf}" for tf in _tfs_sorted)
-_floor_pct  = cfg.min_combo_pass_rate
-
-_info(
-    f"```\n"
-    f"# data: {_n_total:,} combos — {_n_symbols} coins × {_n_timeframes} TFs × {_n_param_sets} params\n"
-    f"# 'robust' line  : coin ✅ if ≥ {_floor_pct:.0%} of its {_n_per_coin} combos pass\n"
-    f"# 'any pass' line: coin ✅ if ≥ 1 combo passes  (matches the Top Combos table)\n"
-    f"# y = passing coins ÷ {_n_symbols}\n\n"
-    f"Gap between the two lines = coins that have 1–{int(_floor_pct * _n_per_coin) - 1} passing combos\n"
-    f"but fall below the {_floor_pct:.0%} robustness floor — they appear in Top Combos\n"
-    f"but are NOT counted as robust in the symbol pass rate.\n\n"
-    f"steep drop  →  threshold sensitive  →  small change excludes many coins\n"
-    f"flat line   →  stable zone  →  safe to move threshold here\n"
-    f"```"
-)
-
-_SWEEP_EXPLANATIONS = {
-    "SQN": (
-        f"**SQN sweep** — consistency of returns.  "
-        f"`< 1.0` = not viable  |  `1–2` = acceptable  |  `≥ 2` = strong.  "
-        f"Active: `SQN ≥ {min_sqn}`"
-    ),
-    "Profit Factor": (
-        f"**PF sweep** — gross profit ÷ gross loss.  "
-        f"`1.5` = earn $1.50 per $1 lost.  "
-        f"Active: `PF ≥ {min_pf}`"
-    ),
-    "# Trades": (
-        f"**Trades sweep** — cutoff filter (combos below excluded entirely, not penalised).  "
-        f"Too few trades → can't distinguish skill from luck.  "
-        f"Active: `trades ≥ {min_trades}`"
-    ),
-}
-
-_sweep_specs = [
-    ("SQN",           "SQN",           sqn_sweep_range,    min_sqn,    ">="),
-    ("Profit Factor", "Profit Factor",  pf_sweep_range,     min_pf,     ">="),
-    ("# Trades",      "# Trades",       trades_sweep_range, min_trades, ">="),
-]
-_sweep_results_for_report: dict[str, tuple[pd.DataFrame, float]] = {}
-for _metric_label, _metric_col, _sweep_range, _active_val, _cmp in _sweep_specs:
-    st.markdown(_SWEEP_EXPLANATIONS[_metric_label])
-    _lo, _hi = float(_sweep_range[0]), float(_sweep_range[1])
-    _values = [float(v) for v in np.linspace(_lo, _hi, sweep_steps)]
-    with st.spinner(f"Sweeping {_metric_label}…"):
-        _sweep_df = sweep_threshold(df, _metric_col, _values, cfg, comparison=_cmp)
-    _sweep_results_for_report[_metric_label] = (_sweep_df, float(_active_val))
-    # Build tidy (long) dataframe for two-line chart
-    _tidy = pd.concat([
-        _sweep_df[["threshold", "symbol_pass_rate"]].rename(
-            columns={"symbol_pass_rate": "pass_rate"}
-        ).assign(metric=f"Robust (≥{_floor_pct:.0%} combos)"),
-        _sweep_df[["threshold", "symbol_any_pass_rate"]].rename(
-            columns={"symbol_any_pass_rate": "pass_rate"}
-        ).assign(metric="Any combo passes"),
-    ], ignore_index=True)
-    _fig = px.line(
-        _tidy, x="threshold", y="pass_rate", color="metric",
-        title=(
-            f"Symbol pass rate vs Min {_metric_label}  "
-            f"({_n_symbols} coins, each = {_n_per_coin} combos pooled across {_n_timeframes} TFs)"
+    _sweep_min_combos = st.slider(
+        "Min passing combos to count as 'robust'",
+        min_value=1,
+        max_value=_n_per_coin,
+        value=1,
+        step=1,
+        key="sweep_min_combos",
+        help=(
+            f"A symbol counts as 'robust' if at least this many of its {_n_per_coin} combos "
+            f"(pooled across all {_n_timeframes} TF(s)) pass all thresholds.  "
+            f"1 = any passing combo counts (same as the 'Any combo passes' line).  "
+            f"{_n_per_coin} = every single combo must pass."
         ),
-        labels={
-            "threshold": f"Min {_metric_label}",
-            "pass_rate": f"Symbol pass rate  (% of {_n_symbols} coins)",
-            "metric":    "Criterion",
-        },
-        color_discrete_map={
-            f"Robust (≥{_floor_pct:.0%} combos)": "#2196F3",
-            "Any combo passes":                    "#FF9800",
-        },
     )
-    _fig.add_vline(
-        x=float(_active_val), line_dash="dash", line_color="white",
-        annotation_text="current threshold", annotation_position="top right",
+    _local_floor_pct = _sweep_min_combos / _n_per_coin
+    _sweep_cfg = dataclasses.replace(cfg, min_combo_pass_rate=_local_floor_pct)
+
+    _robust_label = (
+        "Any combo passes  (N=1)"
+        if _sweep_min_combos == 1
+        else f"Robust (≥{_sweep_min_combos} combos)"
     )
-    _fig.update_layout(yaxis_range=[0, 1.05], yaxis_tickformat=".0%")
-    st.plotly_chart(_fig, use_container_width=True)
+
+    if _sweep_min_combos == 1:
+        st.caption(
+            "ℹ️ At N=1 the 'Robust' and 'Any combo passes' lines are identical. "
+            "Increase the slider to see the gap widen."
+        )
+
+    _SWEEP_EXPLANATIONS = {
+        "SQN": (
+            f"**SQN sweep** — consistency of returns.  "
+            f"`< 1.0` = not viable  |  `1–2` = acceptable  |  `≥ 2` = strong.  "
+            f"Active: `SQN ≥ {min_sqn}`"
+        ),
+        "Profit Factor": (
+            f"**PF sweep** — gross profit ÷ gross loss.  "
+            f"`1.5` = earn $1.50 per $1 lost.  "
+            f"Active: `PF ≥ {min_pf}`"
+        ),
+        "# Trades": (
+            f"**Trades sweep** — cutoff filter (combos below excluded entirely).  "
+            f"Too few trades → can't distinguish skill from luck.  "
+            f"Active: `trades ≥ {min_trades}`"
+        ),
+    }
+
+    _info(
+        f"```\n"
+        f"data: {_n_total:,} combos — {_n_symbols} coins × {_n_timeframes} TFs × {_n_param_sets} params\n"
+        f"'{_robust_label}' line: coin ✅ if ≥ {_sweep_min_combos} of its {_n_per_coin} combos pass\n"
+        f"'Any combo passes' line: coin ✅ if ≥ 1 combo passes\n"
+        f"y = passing coins ÷ {_n_symbols}\n\n"
+        f"steep drop  →  threshold sensitive  →  small change excludes many coins\n"
+        f"flat line   →  stable zone  →  safe to move threshold here\n"
+        f"```"
+    )
+
+    _sweep_specs = [
+        ("SQN",           "SQN",           sqn_sweep_range,    min_sqn,    ">="),
+        ("Profit Factor", "Profit Factor",  pf_sweep_range,     min_pf,     ">="),
+        ("# Trades",      "# Trades",       trades_sweep_range, min_trades, ">="),
+    ]
+    _sweep_results_for_report: dict[str, tuple[pd.DataFrame, float]] = {}
+
+    for _metric_label, _metric_col, _sweep_range, _active_val, _cmp in _sweep_specs:
+        st.markdown(_SWEEP_EXPLANATIONS[_metric_label])
+        _lo, _hi = float(_sweep_range[0]), float(_sweep_range[1])
+        _values = [float(v) for v in np.linspace(_lo, _hi, sweep_steps)]
+        with st.spinner(f"Sweeping {_metric_label}…"):
+            _sweep_df = sweep_threshold(df, _metric_col, _values, _sweep_cfg, comparison=_cmp)
+        _sweep_results_for_report[_metric_label] = (_sweep_df, float(_active_val))
+
+        _tidy = pd.concat([
+            _sweep_df[["threshold", "symbol_pass_rate"]].rename(
+                columns={"symbol_pass_rate": "pass_rate"}
+            ).assign(metric=_robust_label),
+            _sweep_df[["threshold", "symbol_any_pass_rate"]].rename(
+                columns={"symbol_any_pass_rate": "pass_rate"}
+            ).assign(metric="Any combo passes"),
+        ], ignore_index=True)
+        _fig = px.line(
+            _tidy, x="threshold", y="pass_rate", color="metric",
+            title=(
+                f"Symbol pass rate vs Min {_metric_label}  "
+                f"({_n_symbols} coins, each = {_n_per_coin} combos pooled across {_n_timeframes} TFs)"
+            ),
+            labels={
+                "threshold": f"Min {_metric_label}",
+                "pass_rate": f"Symbol pass rate  (% of {_n_symbols} coins)",
+                "metric":    "Criterion",
+            },
+            color_discrete_map={
+                _robust_label:       "#2196F3",
+                "Any combo passes":  "#FF9800",
+            },
+        )
+        _fig.add_vline(
+            x=float(_active_val), line_dash="dash", line_color="white",
+            annotation_text="current threshold", annotation_position="top right",
+        )
+        _fig.update_layout(yaxis_range=[0, 1.05], yaxis_tickformat=".0%")
+        st.plotly_chart(_fig, use_container_width=True)
 
 # ── Store report for sidebar save button ──────────────────────────────────────
 _run_ts = datetime.now().strftime("%Y-%m-%d_%H%M")
+_period_str = (
+    f"_{_data_period[0]}_{_data_period[1]}"
+    if _data_period else ""
+)
 _report_str = _format_phase1_report(
     label=label,
     results_dir=results_dir,
     run_ts=_run_ts,
     cfg=cfg,
-    sym_rates=sym_rates,
-    tf_rates=tf_rates,
     tog_freq=tog_freq,
     n_total=_n_total,
     n_passing=_n_passing,
     n_symbols=_n_symbols,
     n_timeframes=_n_timeframes,
     n_param_sets=_n_param_sets,
+    sweep_min_passing_combos=_sweep_min_combos,
     df=df,
     sweep_data=_sweep_results_for_report,
     weighted_scores=_weighted_scored,
+    data_period=_data_period,
 )
 st.session_state["_report_str"]             = _report_str
-st.session_state["_report_filename_default"] = f"{_run_ts}_{label}_phase1.md"
+st.session_state["_report_filename_default"] = f"{_run_ts}_{label}{_period_str}_phase1_v2.md"
 
-# ── Inline save button (main content area) ───────────────────────────────────
+# ── Inline save button ────────────────────────────────────────────────────────
 st.divider()
 st.subheader("💾 Save Report")
-_inline_fname_default = st.session_state.get("_report_filename_default", f"{_run_ts}_{label}_phase1.md")
+_inline_fname_default = st.session_state.get("_report_filename_default", f"{_run_ts}_{label}_phase1_v2.md")
 _inline_fname = st.text_input(
     "Filename", value=_inline_fname_default, key="p1_inline_save_fname",
 )

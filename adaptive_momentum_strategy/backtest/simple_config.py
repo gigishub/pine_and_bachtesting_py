@@ -16,12 +16,18 @@ Checkpoint resume: if the run is interrupted, re-running picks up from the
 last completed condition (CSV-exists check).  Delete the .current_run marker
 file in the results folder to force a brand-new run.
 
-Flag semantics
---------------
-  True  -> (False, True)  -- include in grid: both off and on are tested
-  False -> (False,)       -- exclude from grid: always off
+Boolean flag semantics
+----------------------
+  True  -> (False, True)  -- sweep: both off and on are tested
+  None  -> (True,)        -- pin on: always active, not swept
+  False -> (False,)       -- pin off: always inactive, not swept
 
 At least one flag per active direction's layer group must be True.
+
+Numeric sweep semantics
+-----------------------
+  (25.0,)          -- single value → pinned at that value
+  (20.0, 25.0, 30.0) -- multiple values → swept across the grid
 """
 
 from __future__ import annotations
@@ -151,32 +157,77 @@ def build_simple_config(output_dir: Path | None = None) -> MomentumGridConfig:
     # separate and will not be included in short-only runs when enable_short
     # is False.
     # ------------------------------------------------------------------ #
-    def _flag_range(enabled: bool) -> tuple[bool, ...]:
-        return (False, True) if enabled else (False,)
+    def _flag_range(flag_val: bool | None, direction_enabled: bool) -> tuple[bool, ...]:
+        """Convert a flag setting to a boolean range tuple.
+
+        flag_val:
+            True  → sweep (False, True)
+            None  → pin on (True,)
+            False → pin off (False,)
+        direction_enabled:
+            When False the flag is always pinned off regardless of flag_val.
+        """
+        if not direction_enabled:
+            return (False,)
+        if flag_val is True:
+            return (False, True)
+        if flag_val is None:
+            return (True,)
+        return (False,)
 
     boolean_filter_ranges = {
         # Long flags
-        "use_adx":            _flag_range(use_adx_regime and enable_long),
-        "use_ema_ribbon":     _flag_range(use_ema_ribbon and enable_long),
-        "use_donchian":       _flag_range(use_donchian_setup and enable_long),
-        "use_volume_profile": _flag_range(use_volume_profile and enable_long),
-        "use_cmf":            _flag_range(use_cmf_trigger and enable_long),
-        "use_power_candle":   _flag_range(use_power_candle and enable_long),
-        "use_chandelier":     _flag_range(use_chandelier_exit and enable_long),
-        "use_psar":           _flag_range(use_psar_exit and enable_long),
-        "use_bbands":         _flag_range(use_bbands_exit and enable_long),
-        "use_trailing_stop":  _flag_range(use_trailing_stop and enable_long),
+        "use_adx":            _flag_range(use_adx_regime, enable_long),
+        "use_ema_ribbon":     _flag_range(use_ema_ribbon, enable_long),
+        "use_donchian":       _flag_range(use_donchian_setup, enable_long),
+        "use_volume_profile": _flag_range(use_volume_profile, enable_long),
+        "use_cmf":            _flag_range(use_cmf_trigger, enable_long),
+        "use_power_candle":   _flag_range(use_power_candle, enable_long),
+        "use_chandelier":     _flag_range(use_chandelier_exit, enable_long),
+        "use_psar":           _flag_range(use_psar_exit, enable_long),
+        "use_bbands":         _flag_range(use_bbands_exit, enable_long),
+        "use_trailing_stop":  _flag_range(use_trailing_stop, enable_long),
         # Short flags (only swept when enable_short=True)
-        "use_ema_ribbon_short":     _flag_range(use_ema_ribbon_short and enable_short),
-        "use_donchian_short":       _flag_range(use_donchian_short and enable_short),
-        "use_volume_profile_short": _flag_range(use_volume_profile_short and enable_short),
-        "use_cmf_short":            _flag_range(use_cmf_short and enable_short),
-        "use_power_candle_short":   _flag_range(use_power_candle_short and enable_short),
-        "use_chandelier_short":     _flag_range(use_chandelier_short and enable_short),
-        "use_psar_short":           _flag_range(use_psar_short and enable_short),
-        "use_bbands_short":         _flag_range(use_bbands_short and enable_short),
-        "use_trailing_stop_short":  _flag_range(use_trailing_stop_short and enable_short),
+        "use_ema_ribbon_short":     _flag_range(use_ema_ribbon_short, enable_short),
+        "use_donchian_short":       _flag_range(use_donchian_short, enable_short),
+        "use_volume_profile_short": _flag_range(use_volume_profile_short, enable_short),
+        "use_cmf_short":            _flag_range(use_cmf_short, enable_short),
+        "use_power_candle_short":   _flag_range(use_power_candle_short, enable_short),
+        "use_chandelier_short":     _flag_range(use_chandelier_short, enable_short),
+        "use_psar_short":           _flag_range(use_psar_short, enable_short),
+        "use_bbands_short":         _flag_range(use_bbands_short, enable_short),
+        "use_trailing_stop_short":  _flag_range(use_trailing_stop_short, enable_short),
     }
+
+    # ------------------------------------------------------------------ #
+    # Numeric parameter sweeps
+    # Single value = pinned; multiple values = swept in the grid.
+    # Each extra value multiplies the grid size.
+    # ------------------------------------------------------------------ #
+
+    # ADX threshold — only active in combos where use_adx = True
+    adx_threshold: tuple[float, ...] = (25.0,)
+    # adx_threshold = (20.0, 25.0, 30.0)
+
+    # CMF threshold — only active in combos where use_cmf = True
+    cmf_threshold: tuple[float, ...] = (0.05,)
+    # cmf_threshold = (0.0, 0.05, 0.10)
+
+    # Chandelier ATR multiplier — only active where use_chandelier = True
+    chandelier_atr_mult: tuple[float, ...] = (3.0,)
+    # chandelier_atr_mult = (2.5, 3.0, 3.5)
+
+    # Trailing stop ATR multiplier — only active where use_trailing_stop = True
+    trail_atr_mult: tuple[float, ...] = (2.0,)
+    # trail_atr_mult = (1.5, 2.0, 2.5)
+
+    # EMA ribbon periods — only active in combos where use_ema_ribbon = True
+    ema_fast: tuple[int, ...] = (20,)
+    # ema_fast = (10, 20)
+    ema_mid: tuple[int, ...] = (50,)
+    # ema_mid = (50,)
+    ema_slow: tuple[int, ...] = (200,)
+    # ema_slow = (100, 150, 200)
 
     # ------------------------------------------------------------------ #
     # Execution & output
@@ -212,6 +263,13 @@ def build_simple_config(output_dir: Path | None = None) -> MomentumGridConfig:
         short_setup_exclusive=short_setup_exclusive,
         short_trigger_exclusive=short_trigger_exclusive,
         short_exit_exclusive=short_exit_exclusive,
+        adx_threshold_range=adx_threshold,
+        cmf_threshold_range=cmf_threshold,
+        chandelier_atr_mult_range=chandelier_atr_mult,
+        trail_atr_mult_range=trail_atr_mult,
+        ema_fast_range=ema_fast,
+        ema_mid_range=ema_mid,
+        ema_slow_range=ema_slow,
         initial_cash=initial_cash,
         fees=commission,
         n_jobs=n_jobs,
@@ -221,23 +279,5 @@ def build_simple_config(output_dir: Path | None = None) -> MomentumGridConfig:
         save_trade_logs=save_trade_logs,
         trade_logs_top_n=trade_logs_top_n,
     )
-
-    # ------------------------------------------------------------------ #
-    # Optional: sweep numeric parameters
-    # Uncomment any line to expand the search space for that parameter.
-    # Each extra value multiplies the grid size.
-    # ------------------------------------------------------------------ #
-
-    # ADX threshold -- only affects combos where use_adx = True
-    # config.adx_threshold_range = (20.0, 25.0, 30.0)
-
-    # CMF threshold -- only affects combos where use_cmf = True
-    # config.cmf_threshold_range = (0.0, 0.05, 0.10)
-
-    # Chandelier ATR multiplier -- only affects combos where use_chandelier = True
-    # config.chandelier_atr_mult_range = (2.5, 3.0, 3.5)
-
-    # Trailing stop ATR multiplier -- only affects combos where use_trailing_stop = True
-    # config.trail_atr_mult_range = (1.5, 2.0, 2.5)
 
     return config

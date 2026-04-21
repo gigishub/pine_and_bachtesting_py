@@ -125,7 +125,7 @@ def load_ohlcv(
     else:
         raise ValueError(f"Unknown source: {source!r}. Choose 'kucoin' or 'bybit'.")
 
-    if use_cache:
+    if use_cache and not df.empty:
         _CACHE_DIR.mkdir(parents=True, exist_ok=True)
         df.to_parquet(cache_file)
         logger.info("Cached to: %s", cache_file.name)
