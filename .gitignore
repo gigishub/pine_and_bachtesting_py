@@ -42,6 +42,9 @@ Thumbs.db
 #env
 .envUPS_py_v2/data/cache/
 
+# crypto_data downloaded market data
+crypto_data/data/
+
 
 .claude
 .DS_Store

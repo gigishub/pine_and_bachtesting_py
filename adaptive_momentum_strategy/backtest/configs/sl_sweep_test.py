@@ -67,6 +67,8 @@ def build_config(output_dir: Path | None = None) -> MomentumGridConfig:
             "use_trailing_stop":  (False,),
             # ── VBT-native SL: sweep off vs on
             "use_vbt_sl":         (False, True),
+            # ── Trailing ratchet: sweep off vs on (deduplicated when use_vbt_sl=False)
+            "use_vbt_sl_trail":   (False, True),
             # ── Short flags: all pinned off (long-only test)
             "use_ema_ribbon_short":     (False,),
             "use_donchian_short":       (False,),

@@ -119,10 +119,13 @@ def run(
 
             sl_stop_long  = sl_frac_long.values
             sl_stop_short = sl_frac_short.values
-            adjust_sl_func_long  = adjust_swing_sl_long_nb
-            adjust_sl_func_short = adjust_swing_sl_short_nb
-            adjust_sl_args_long  = (swing_low_2d,  atr_2d, p.sl_n_atr_trail)
-            adjust_sl_args_short = (swing_high_2d, atr_2d, p.sl_n_atr_trail)
+
+            # Trailing ratchet is optional — only wire when explicitly enabled
+            if p.use_vbt_sl_trail:
+                adjust_sl_func_long  = adjust_swing_sl_long_nb
+                adjust_sl_func_short = adjust_swing_sl_short_nb
+                adjust_sl_args_long  = (swing_low_2d,  atr_2d, p.sl_n_atr_trail)
+                adjust_sl_args_short = (swing_high_2d, atr_2d, p.sl_n_atr_trail)
 
     if fill_at_next_open:
         long_entries  = arrs["long_entries"].shift(1, fill_value=False).astype(bool)

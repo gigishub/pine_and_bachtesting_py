@@ -262,12 +262,12 @@ class TestBuildParameterGridExclusive:
 # validate_coverage and param_audit
 # ---------------------------------------------------------------------------
 
-# All 20 auditable flags (10 long + 9 short + 1 VBT SL)
+# All 21 auditable flags (10 long + 9 short + 2 VBT SL)
 _ALL_AUDITABLE = [
     "use_adx", "use_ema_ribbon", "use_donchian", "use_volume_profile",
     "use_cmf", "use_power_candle", "use_chandelier", "use_psar",
     "use_bbands", "use_trailing_stop",
-    "use_vbt_sl",
+    "use_vbt_sl", "use_vbt_sl_trail",
     "use_ema_ribbon_short", "use_donchian_short", "use_volume_profile_short",
     "use_cmf_short", "use_power_candle_short", "use_chandelier_short",
     "use_psar_short", "use_bbands_short", "use_trailing_stop_short",

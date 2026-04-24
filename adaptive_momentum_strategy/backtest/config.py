@@ -134,6 +134,8 @@ class MomentumGridConfig:
             "use_trailing_stop":  (False, True),
             # VBT-native SL — off by default; set (False, True) to sweep
             "use_vbt_sl":         (False,),
+            # Trailing ratchet — only meaningful when use_vbt_sl=True
+            "use_vbt_sl_trail":   (False,),
             # Short-side flags (all off by default — enabled via enable_short)
             "use_ema_ribbon_short":     (False,),
             "use_donchian_short":       (False,),
@@ -385,6 +387,8 @@ class MomentumGridConfig:
             "ema_slow":             ("use_ema_ribbon",),
             # SL numeric params are irrelevant when use_vbt_sl=False.
             "sl_n_atr_init":        ("use_vbt_sl",),
-            "sl_n_atr_trail":       ("use_vbt_sl",),
             "sl_swing_lookback":    ("use_vbt_sl",),
+            # Trailing params are irrelevant when use_vbt_sl_trail=False.
+            "sl_n_atr_trail":       ("use_vbt_sl_trail",),
+            "use_vbt_sl_trail":     ("use_vbt_sl",),
         }

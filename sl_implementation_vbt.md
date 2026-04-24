@@ -12,6 +12,14 @@ strategy exits. The VBT-native SL fires on whichever comes first — the two
 mechanisms are non-conflicting. When `use_vbt_sl=False` (default), behaviour
 is identical to the original strategy.
 
+The entry-candle stop and the swing trailing ratchet are independently toggled:
+
+| `use_vbt_sl` | `use_vbt_sl_trail` | Effect |
+|---|---|---|
+| `False` | any | No VBT-native SL — strategy exits only |
+| `True` | `False` | Hard entry-candle stop, fixed for the life of the trade |
+| `True` | `True` | Hard entry-candle stop + ratchets inward via swing low/high |
+
 ---
 
 ## Files Changed / Created
@@ -60,11 +68,12 @@ def compute_entry_candle_sl(high, low, close, atr, n_atr_init) -> tuple[pd.Serie
 
 ---
 
-### 3. `strategy/parameters.py` — 5 new fields
+### 3. `strategy/parameters.py` — 6 new fields
 
 ```python
-# VBT-native SL (entry candle + swing trailing)
-use_vbt_sl: bool = False            # off by default — backward compatible
+# VBT-native SL (entry candle + optional swing trailing)
+use_vbt_sl: bool = False            # Enable VBT-native entry-candle SL
+use_vbt_sl_trail: bool = False      # Enable swing trailing ratchet (requires use_vbt_sl=True)
 sl_atr_period: int = 14
 sl_n_atr_init: float = 0.5         # ATR buffer below entry candle low / above high
 sl_n_atr_trail: float = 0.5        # ATR buffer below trailing swing low / above high
@@ -174,7 +183,8 @@ if len(self.sl_swing_lookback_range) > 1:
 **Add to the default `boolean_filter_ranges`:**
 
 ```python
-"use_vbt_sl": (False,),   # off by default; set (False, True) to sweep
+"use_vbt_sl":       (False,),   # off by default; set (False, True) to sweep
+"use_vbt_sl_trail": (False,),   # off by default; requires use_vbt_sl=True to have effect
 ```
 
 ---
@@ -182,24 +192,25 @@ if len(self.sl_swing_lookback_range) > 1:
 ### 6. All existing phase configs
 
 Every file in `backtest/configs/` that passes an explicit `boolean_filter_ranges`
-must include `use_vbt_sl`, because `validate_coverage()` (called by the sequencer)
-checks every `bool` field in `Parameters`.
+must include both flags, because `validate_coverage()` checks every `bool` field in `Parameters`.
 
 ```python
-"use_vbt_sl": (False,),   # pinned off in existing phases
+"use_vbt_sl":       (False,),   # pinned off in existing phases
+"use_vbt_sl_trail": (False,),   # pinned off in existing phases
 ```
 
 ---
 
 ### 7. Tests — `tests/test_pipeline.py`
 
-Add `"use_vbt_sl"` to the `_ALL_AUDITABLE` list and update the comment:
+Add both flags to `_ALL_AUDITABLE`:
 
 ```python
-# All 20 auditable flags (10 long + 9 short + 1 VBT SL)
+# All 21 auditable flags (10 long + 9 short + 2 VBT SL)
 _ALL_AUDITABLE = [
     ...existing 19 flags...,
     "use_vbt_sl",
+    "use_vbt_sl_trail",
 ]
 ```
 
@@ -209,11 +220,12 @@ _ALL_AUDITABLE = [
 
 - [ ] Copy `stops_numba.py` as-is — it is generic
 - [ ] Copy the three SL functions from `stops.py` — they are generic
-- [ ] Add the 5 SL fields to your `Parameters` dataclass
+- [ ] Add the 6 SL fields to your `Parameters` dataclass (`use_vbt_sl`, `use_vbt_sl_trail`, `sl_atr_period`, `sl_n_atr_init`, `sl_n_atr_trail`, `sl_swing_lookback`)
 - [ ] Add the 3 range fields + `feature_dependencies` entries to your grid config
-- [ ] Add `"use_vbt_sl": (False,)` to the default `boolean_filter_ranges` in the grid config
-- [ ] Add `"use_vbt_sl": (False,)` to every existing phase config's `boolean_filter_ranges`
+- [ ] Add both `"use_vbt_sl"` and `"use_vbt_sl_trail"` to the default `boolean_filter_ranges`
+- [ ] Add both flags to every existing phase config's `boolean_filter_ranges`
 - [ ] Use the `**sl_kwargs` pattern in `runner.py` — never pass `None` to VBT
+- [ ] Gate trailing callbacks on `p.use_vbt_sl_trail` separately from `p.use_vbt_sl`
 - [ ] Update `_ALL_AUDITABLE` in tests
 
 ---
