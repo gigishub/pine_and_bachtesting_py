@@ -1,0 +1,254 @@
+"""Outcome engine for the trigger volume confirmation test (Step 3).
+
+No multi-timeframe alignment required — all signals are computed directly
+on the 1-hour series.
+
+Populations per pair:
+    all_regime        — all Step-1-regime candles (baseline reference)
+    volume_triggered  — regime + volume > volume_mult × 20-bar rolling avg
+    not_triggered     — regime + volume ≤ 20-bar rolling avg (verdict baseline)
+
+Look-ahead prevention:
+    1. Volume rolling average shifted by 1 bar in entries.py.
+    2. Regime aligned from daily data via compute_regime_signals() (same as
+       Steps 1 and 2 — consistent treatment across the harness).
+"""
+
+from __future__ import annotations
+
+import logging
+from pathlib import Path
+
+import numpy as np
+import pandas as pd
+
+from bear_strategy.hypothesis_tests.trigger_volume_confirmation.config import TestConfig
+from bear_strategy.hypothesis_tests.trigger_volume_confirmation.entries import (
+    build_population_masks,
+)
+from bear_strategy.strategy.parameters import Parameters
+from bear_strategy.strategy.signals import compute_regime_signals
+
+logger = logging.getLogger(__name__)
+
+_POPULATION_ORDER = ["all_regime", "volume_triggered", "not_triggered"]
+
+
+# ---------------------------------------------------------------------------
+# Public entry point
+# ---------------------------------------------------------------------------
+
+
+def run_test(config: TestConfig) -> pd.DataFrame:
+    """Run the trigger volume confirmation test across all configured pairs.
+
+    Args:
+        config: TestConfig instance.
+
+    Returns:
+        DataFrame with columns (pair, population, win_rate, profit_factor,
+        avg_duration, n_trades), indexed by (pair, population).
+    """
+    params = Parameters(
+        ema_slope_period=config.ema_slope_period,
+        ema_slope_lookback=config.ema_slope_lookback,
+        ema_below_periods=config.ema_below_periods,
+    )
+
+    records: list[dict] = []
+    for pair in config.pairs:
+        logger.info("Processing %s", pair)
+        try:
+            records.extend(_process_pair(pair, config, params))
+        except FileNotFoundError as exc:
+            logger.warning("Skipping %s — data not found: %s", pair, exc)
+        except Exception as exc:
+            logger.error("Error processing %s: %s", pair, exc, exc_info=True)
+            raise
+
+    if not records:
+        return pd.DataFrame(
+            columns=["pair", "population", "win_rate", "profit_factor", "avg_duration", "n_trades"]
+        )
+
+    return pd.DataFrame(records).set_index(["pair", "population"])
+
+
+# ---------------------------------------------------------------------------
+# Per-pair processing
+# ---------------------------------------------------------------------------
+
+
+def _process_pair(
+    pair: str,
+    config: TestConfig,
+    params: Parameters,
+) -> list[dict]:
+    df_1h = _load_parquet(config.data_dir, pair, config.entry_tf, config.start_date, config.end_date)
+    df_daily = _load_parquet(config.data_dir, pair, "1d", config.start_date, config.end_date)
+
+    df_1h = _standardise_ohlcv(df_1h)
+    df_daily = _standardise_ohlcv(df_daily)
+
+    # Regime signals onto 1h (same as Steps 1 and 2)
+    regime = compute_regime_signals(df_1h, df_daily, params)
+    df_1h = df_1h.copy()
+    for col, series in regime.items():
+        df_1h[col] = series.values
+
+    # 1h ATR for stop/target sizing
+    df_1h["atr"] = _atr(df_1h, config.atr_period).values
+
+    masks = build_population_masks(df_1h, config)
+
+    records = []
+    for pop_name in _POPULATION_ORDER:
+        mask = masks[pop_name]
+        result = _compute_outcomes(df_1h, mask, config)
+        records.append({"pair": pair, "population": pop_name, **result})
+        logger.debug(
+            "%s | %-18s | trades=%d  win=%.1f%%  PF=%.2f  dur=%.1f bars",
+            pair,
+            pop_name,
+            result["n_trades"],
+            result["win_rate"] * 100 if not np.isnan(result["win_rate"]) else float("nan"),
+            result["profit_factor"],
+            result["avg_duration"],
+        )
+
+    return records
+
+
+# ---------------------------------------------------------------------------
+# Outcome engine (identical forward-scan as Steps 1 and 2)
+# ---------------------------------------------------------------------------
+
+
+def _compute_outcomes(
+    df: pd.DataFrame,
+    entry_mask: pd.Series,
+    config: TestConfig,
+) -> dict:
+    """Vectorized forward-scan outcome engine.
+
+    Enters a short at every True bar's close. Scans forward until stop
+    (entry + stop_mult × ATR_1h) or target (entry - target_mult × ATR_1h).
+    Ties on the same bar resolve as losses (conservative).
+    Unresolved trades (data ends) are excluded.
+
+    Returns dict with win_rate, profit_factor, avg_duration, n_trades.
+    """
+    closes = df["Close"].to_numpy(dtype=float)
+    highs = df["High"].to_numpy(dtype=float)
+    lows = df["Low"].to_numpy(dtype=float)
+    atrs = df["atr"].to_numpy(dtype=float)
+    mask_arr = entry_mask.to_numpy(dtype=bool)
+
+    entry_indices = np.where(mask_arr)[0]
+    wins: list[float] = []
+    losses: list[float] = []
+    durations: list[int] = []
+
+    for idx in entry_indices:
+        if np.isnan(atrs[idx]) or atrs[idx] == 0:
+            continue
+        entry_price = closes[idx]
+        stop = entry_price + config.stop_atr_mult * atrs[idx]
+        target = entry_price - config.target_atr_mult * atrs[idx]
+
+        resolved = False
+        for fwd in range(1, len(closes) - idx):
+            bar = idx + fwd
+            if highs[bar] >= stop:
+                losses.append(config.stop_atr_mult)
+                durations.append(fwd)
+                resolved = True
+                break
+            if lows[bar] <= target:
+                wins.append(config.target_atr_mult)
+                durations.append(fwd)
+                resolved = True
+                break
+
+        if not resolved:
+            continue
+
+    n_wins = len(wins)
+    n_losses = len(losses)
+    n_trades = n_wins + n_losses
+
+    if n_trades == 0:
+        return {
+            "win_rate": float("nan"),
+            "profit_factor": float("nan"),
+            "avg_duration": float("nan"),
+            "n_trades": 0,
+        }
+
+    win_rate = n_wins / n_trades
+    profit_factor = sum(wins) / sum(losses) if losses else float("inf")
+    avg_duration = sum(durations) / len(durations)
+
+    return {
+        "win_rate": win_rate,
+        "profit_factor": profit_factor,
+        "avg_duration": avg_duration,
+        "n_trades": n_trades,
+    }
+
+
+# ---------------------------------------------------------------------------
+# Data loading helpers (same as Steps 1 and 2)
+# ---------------------------------------------------------------------------
+
+
+def _load_parquet(
+    data_dir: Path,
+    symbol: str,
+    timeframe: str,
+    start_date: str,
+    end_date: str,
+) -> pd.DataFrame:
+    symbol_dir = data_dir / symbol
+    if not symbol_dir.exists():
+        raise FileNotFoundError(f"No data directory for {symbol}: {symbol_dir}")
+
+    exact = symbol_dir / f"{symbol}_{timeframe}_start_{start_date}_end_{end_date}.parquet"
+    if exact.exists():
+        return pd.read_parquet(exact)
+
+    candidates = sorted(symbol_dir.glob(f"{symbol}_{timeframe}_*.parquet"))
+    if not candidates:
+        raise FileNotFoundError(
+            f"No parquet file for {symbol}/{timeframe} in {symbol_dir}."
+        )
+
+    path = candidates[0]
+    logger.debug("Exact file not found; using %s", path.name)
+    return pd.read_parquet(path)
+
+
+def _standardise_ohlcv(df: pd.DataFrame) -> pd.DataFrame:
+    rename_map = {
+        "open": "Open", "high": "High", "low": "Low",
+        "close": "Close", "volume": "Volume",
+        "Open time": "timestamp", "open_time": "timestamp",
+    }
+    df = df.rename(columns=rename_map)
+    if not isinstance(df.index, pd.DatetimeIndex):
+        for col in ("timestamp", "date", "Datetime"):
+            if col in df.columns:
+                df = df.set_index(pd.to_datetime(df[col])).drop(columns=[col], errors="ignore")
+                break
+    return df.sort_index()
+
+
+def _atr(df: pd.DataFrame, period: int) -> pd.Series:
+    high = df["High"]
+    low = df["Low"]
+    prev_close = df["Close"].shift(1)
+    tr = pd.concat(
+        [high - low, (high - prev_close).abs(), (low - prev_close).abs()],
+        axis=1,
+    ).max(axis=1)
+    return tr.ewm(span=period, adjust=False).mean()
