@@ -164,7 +164,7 @@ All testing uses the full 30-pair universe. Data minimum: 3 years of 15-minute O
 
 **How to run it:** Enter shorts at random 15-minute candles across all 30 pairs. Apply a fixed 2× ATR stop and fixed 3× ATR target. Run twice — once restricted to confirmed regime candles, once across all candles. Record win rate, profit factor, and average trade duration for both populations.
 
-**How to prove yourself wrong:** If win rate and profit factor in the regime population are not meaningfully higher than the unrestricted population, the regime filter is not creating directional skew. Do not proceed to Step 2 — rewrite Layer 1 first. Meaningful threshold: at least 8 percentage points win rate improvement and profit factor above 1.2 in-regime vs. below 1.0 out-of-regime.
+**How to prove yourself wrong:** If win rate and profit factor in the regime population are not meaningfully higher than the unrestricted population, the regime filter is not creating directional skew. Do not proceed to Step 2 — rewrite Layer 1 first. Use data-scaled thresholds rather than fixed bars. For each pair, set the minimum meaningful win-rate lift to `2.5 × sqrt(p × (1−p) / n)`, where `p` is the baseline all-candle win rate and `n` is the smaller trade count between the two populations being compared. For profit factor, require PF lift above a trade-count-adjusted noise floor: `0.02` when `n > 50k`, `0.05` when `10k ≤ n ≤ 50k`, `0.10` when `n < 10k`. Keep the minimum trade-count gate in place.
 
 **Secondary attack — isolate each regime indicator:** Test EMA 200 alone vs. VATS alone vs. combined. If the combined filter does not outperform either component alone, VATS is not adding to EMA 200 and gets cut. The stronger individual indicator carries forward.
 
@@ -176,7 +176,7 @@ All testing uses the full 30-pair universe. Data minimum: 3 years of 15-minute O
 
 **How to run it:** Classify every regime-confirmed 15-minute candle as near-setup (within 0.5× ATR_4H of a VPVR HVN or Anchored VWAP) or away-from-setup. Enter random shorts in both populations with fixed stops and targets. Compare win rate and profit factor.
 
-**How to prove yourself wrong:** If near-setup win rate is not at least 6 percentage points higher than away-from-setup, the levels are not providing meaningful resistance prediction and Layer 2 is decorative. Test VPVR alone vs. Anchored VWAP alone — if one is doing all the work, the other gets cut and one indicator carries forward, not two.
+**How to prove yourself wrong:** If near-setup win rate and profit factor do not beat away-from-setup by more than the same data-scaled thresholds, the levels are not providing meaningful resistance prediction and Layer 2 is decorative. For each pair, compute `min_pp = 2.5 × sqrt(p × (1−p) / n)` using the away-from-setup baseline win rate and the smaller trade count between the two populations. Require observed win-rate lift to exceed `min_pp`, require PF lift above the same trade-count-adjusted noise floor (`0.02` above 50k trades, `0.05` at 10k–50k, `0.10` below 10k), and keep the minimum trade-count gate. Test VPVR alone vs. Anchored VWAP alone — if one is doing all the work, the other gets cut and one indicator carries forward, not two.
 
 **Secondary attack — test Anchored VWAP age decay:** Sort Anchored VWAP setups by the age of the swing high anchor point in ATR-normalised units. If win rate at Anchored VWAP does not decline as the anchor ages, the trapped-buyer hypothesis is wrong — the level is working for a different reason and the hypothesis needs revision.
 
@@ -188,7 +188,7 @@ All testing uses the full 30-pair universe. Data minimum: 3 years of 15-minute O
 
 **How to run it:** Take every candle in the valid setup population. Split into triggered (volume > 20-bar average) and untriggered (volume ≤ 20-bar average). Enter shorts at the close of each and compare outcomes with fixed exits.
 
-**How to prove yourself wrong:** If the triggered population win rate is not at least 5 percentage points higher than untriggered, the volume spike is reducing trade count without improving quality. Cut it or replace it.
+**How to prove yourself wrong:** If the triggered population does not beat the untriggered population by more than the same data-scaled win-rate and PF thresholds, the volume spike is reducing trade count without improving quality. Compute the minimum meaningful win-rate lift from the untriggered baseline using `2.5 × sqrt(p × (1−p) / n)`, use the smaller of the two trade counts as `n`, require PF lift above the same trade-count-adjusted noise floor, and keep the minimum trade-count gate. If it cannot clear those bars, cut it or replace it.
 
 **CVD divergence test:** From the triggered population, further split into CVD-divergent and non-divergent. If CVD divergence does not improve outcomes on top of the volume trigger, the absorption hypothesis — despite being the strongest conceptually — is not detectable in your data at this resolution. Record the result explicitly and do not carry a signal that does not improve outcomes regardless of how sound the theory is.
 

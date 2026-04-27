@@ -43,9 +43,9 @@ Replace `<strategy_name>` with a lowercase snake_case name describing the strate
 │   ├── signals.py              # compute_signals(df, params) → dict[str, Series]
 │   ├── indicators/
 │   │   ├── __init__.py
-│   │   ├── <regime_indicator>.py
-│   │   ├── <setup_indicator>.py
-│   │   └── <trigger_indicator>.py
+│   │   ├── regime_indicator/
+│   │   ├── setup_indicator/
+│   │   └── trigger_indicator/
 │   ├── decision/
 │   │   ├── __init__.py
 │   │   ├── entry.py            # should_buy(regime, setup, trigger, in_position) → bool

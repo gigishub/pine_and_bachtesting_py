@@ -1,19 +1,50 @@
-"""Independent, thorough OHLCV data quality audit.
+"""
+Independent, thorough OHLCV data quality audit.
 
 Runs a comprehensive set of checks beyond the lightweight quality.py inline
-checks that run during download.  Produces a detailed Markdown report saved
+checks that run during download. Produces a detailed Markdown report saved
 to the coin's directory.
 
-Per-file checks (run_audit / audit_coin)
------------------------------------------
-1.  Completeness     — actual vs expected row count; exact gap locations
-2.  Duplicates       — duplicate timestamps
-3.  Price integrity  — zero or negative OHLC values
-4.  OHLC logic       — High≥Low, High≥Open, High≥Close, Low≤Open, Low≤Close
-5.  Price spikes     — single-candle log-return exceeds a tf-aware threshold
-6.  Stale prices     — N consecutive identical Close values (frozen data)
-7.  Volume health    — zero-volume candles; volume spikes vs rolling median
-8.  Return profile   — log-return mean, std, skew, kurtosis (statistical flag)
+Use case
+--------
+This module is intended for auditing downloaded OHLCV files stored under
+`crypto_data/data/<SYMBOL>/`. It is useful when you want to verify that
+market data is:
+- complete for the selected timeframe,
+- free of duplicate timestamps,
+- OHLC-consistent,
+- free of extreme spikes or frozen feeds,
+- volume-sane,
+- and statistically reasonable.
+
+Typical workflow:
+1. Download data with `crypto_data.main` or the downloader module.
+2. Run `audit_all()` for one or more symbols and timeframes.
+3. Inspect the generated Markdown audit reports in each coin folder.
+
+Python API
+----------
+from crypto_data.audit import audit_all, audit_coin
+
+scores = audit_all(
+    symbols=["BTCUSDT"],
+    timeframes=["1d", "4h", "1h", "15m"],
+)
+
+score = audit_coin("BTCUSDT", "4h")
+
+CLI usage
+---------
+Run the module as a script from the repo root:
+
+    source .venv/bin/activate
+    python -m crypto_data.audit
+
+This executes `audit_all()` using the default symbols and timeframes
+defined in `crypto_data/config.py`.
+
+If you want custom symbol/timeframe sets from the CLI, add an argparse
+wrapper around `audit_all()` in this file.
 
 Cross-timeframe consistency (cross_timeframe_check)
 ----------------------------------------------------
