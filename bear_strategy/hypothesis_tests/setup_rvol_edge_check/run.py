@@ -15,8 +15,8 @@ Key parameter — min_bars_active (set in config.py):
     3  → three consecutive spike bars required  (recommended for 15m/5m)
 
 Result files:
-    step2_rvol_results_entry{entry_tf}_bars{min_bars_active}.csv
-    step2_rvol_results_entry{entry_tf}_bars{min_bars_active}.md
+    step2_rvol_results_entry{entry_tf}_bars{min_bars_active}_sl{stop_atr_mult}_tp{target_atr_mult}_atr{atr_period}.csv
+    step2_rvol_results_entry{entry_tf}_bars{min_bars_active}_sl{stop_atr_mult}_tp{target_atr_mult}_atr{atr_period}.md
 
 ──────────────────────────────────────────────────────────────────────
 What is being tested
@@ -54,7 +54,7 @@ import sys
 
 import pandas as pd
 
-from bear_strategy.hypothesis_tests.report_writer import capture_prints, save_report
+from bear_strategy.hypothesis_tests.report_writer import capture_prints, save_report, run_stem, _fmt_param
 from bear_strategy.hypothesis_tests.setup_rvol_edge_check.config import TestConfig
 from bear_strategy.hypothesis_tests.setup_rvol_edge_check.runner import run_test
 
@@ -96,15 +96,32 @@ def main() -> None:
         logger.error("No results — check parquet data availability.")
         sys.exit(1)
 
-    stem = f"step2_rvol_results_entry{config.entry_tf}_bars{config.min_bars_active}"
+    stem = run_stem(
+        config.entry_tf, config.stop_atr_mult, config.target_atr_mult, config.atr_period,
+        extra=f"rvol{_fmt_param(config.rvol_threshold)}_bars{config.min_bars_active}",
+    )
+    _config_params = {
+        "entry_tf": config.entry_tf,
+        "stop_atr_mult": config.stop_atr_mult,
+        "target_atr_mult": config.target_atr_mult,
+        "atr_period": config.atr_period,
+        "rvol_threshold": config.rvol_threshold,
+        "vol_ma_len": config.vol_ma_len,
+        "min_bars_active": config.min_bars_active,
+    }
 
     with capture_prints() as buf:
         _print_summary(results, config)
         _save_results(results, config, stem)
         _print_verdict(results, config)
 
-    md_path = config.results_dir / f"{stem}.md"
-    save_report(buf.text, md_path, title="RVOL Setup Edge Check")
+    md_path = config.results_dir / f"step2_rvol_results_{stem}.md"
+    save_report(
+        buf.text,
+        md_path,
+        f"Bear Strategy — RVOL Setup Edge Check  (entry_tf={config.entry_tf})",
+        config_params=_config_params,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -142,8 +159,9 @@ def _print_summary(results: pd.DataFrame, config: TestConfig) -> None:
 
 
 def _save_results(results: pd.DataFrame, config: TestConfig, stem: str) -> None:
-    config.results_dir.mkdir(parents=True, exist_ok=True)
-    out = config.results_dir / f"{stem}.csv"
+    csv_dir = config.results_dir / "csv"
+    csv_dir.mkdir(parents=True, exist_ok=True)
+    out = csv_dir / f"step2_rvol_results_{stem}.csv"
     results.reset_index().to_csv(out, index=False)
     logger.info("Results saved → %s", out)
 

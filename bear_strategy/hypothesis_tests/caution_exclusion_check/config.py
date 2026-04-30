@@ -4,19 +4,13 @@ Hypothesis: Within the EMA-50 bear regime, excluding bars where price
 reclaims the 1H EMA(20) OR where the 7-bar swing exceeds 1.5× ATR should
 improve short-entry quality by removing noise/reversal bars.
 
-To sweep timeframes or exit sizing across all steps, edit
-``bear_strategy/hypothesis_tests/experiment_config.py`` and use
-``TestConfig.from_experiment(ExperimentConfig())``.
+Edit fields directly in this dataclass to change timeframe or exit sizing.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import TYPE_CHECKING
-
-if TYPE_CHECKING:
-    from bear_strategy.hypothesis_tests.experiment_config import ExperimentConfig
 
 
 @dataclass
@@ -31,18 +25,18 @@ class TestConfig:
     # Caution filter parameters
     # ------------------------------------------------------------------ #
     # EMA period for local trend reference (is_caution condition 1)
-    ema20_period: int = 20
+    ema20_period: int = 10
     # Rolling window for 7-bar swing range (is_caution condition 2)
     range_period: int = 7
     # Multiplier: range > range_atr_mult × ATR is flagged as choppy
-    range_atr_mult: float = 1.5
+    range_atr_mult: float = 1.2
 
     # ------------------------------------------------------------------ #
     # Exit parameters — ATR(7) per spec, same period used for range filter
     # ------------------------------------------------------------------ #
     stop_atr_mult: float = 2.0
     target_atr_mult: float = 3.0
-    atr_period: int = 7  # ATR(entry_tf, 7) per spec; matches ExperimentConfig default
+    atr_period: int = 7  # ATR(entry_tf, 7) per spec
 
     # ------------------------------------------------------------------ #
     # Regime — fixed to Step 1 winner (ema_below_50)
@@ -86,20 +80,3 @@ class TestConfig:
             "bear_strategy/backtest/hypothesis_tests_raw/results/step2b_caution_check"
         )
     )
-
-    # ------------------------------------------------------------------ #
-    # Factory: build from shared ExperimentConfig
-    # ------------------------------------------------------------------ #
-    @classmethod
-    def from_experiment(cls, exp: "ExperimentConfig") -> "TestConfig":
-        """Create a TestConfig using shared TF and exit settings.
-
-        atr_period defaults to 7 in both TestConfig and ExperimentConfig,
-        so no override is needed for this step's spec.
-        """
-        return cls(
-            entry_tf=exp.entry_tf,
-            stop_atr_mult=exp.stop_atr_mult,
-            target_atr_mult=exp.target_atr_mult,
-            atr_period=exp.atr_period,
-        )

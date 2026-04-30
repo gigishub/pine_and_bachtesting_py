@@ -10,8 +10,8 @@ Timeframe (set entry_tf in config.py):
     "4h"  — position shorts
 
 Result files:
-    step2_bb_results_entry{entry_tf}.csv
-    step2_bb_results_entry{entry_tf}.md
+    step2_bb_results_entry{entry_tf}_sl{stop_atr_mult}_tp{target_atr_mult}_atr{atr_period}.csv
+    step2_bb_results_entry{entry_tf}_sl{stop_atr_mult}_tp{target_atr_mult}_atr{atr_period}.md
 
 ──────────────────────────────────────────────────────────────────────
 What is being tested
@@ -54,6 +54,7 @@ import pandas as pd
 
 from bear_strategy.hypothesis_tests.setup_bb_edge_check.config import TestConfig
 from bear_strategy.hypothesis_tests.setup_bb_edge_check.runner import run_test
+from bear_strategy.hypothesis_tests.report_writer import capture_prints, save_report, run_stem, _fmt_param
 
 logging.basicConfig(
     level=logging.INFO,
@@ -87,9 +88,30 @@ def main() -> None:
         logger.error("No results — check parquet data availability.")
         sys.exit(1)
 
-    _print_summary(results, config)
-    _save_results(results, config)
-    _print_verdict(results, config)
+    stem = run_stem(config.entry_tf, config.stop_atr_mult, config.target_atr_mult, config.atr_period,
+                    extra=f"bb{config.bb_period}_std{_fmt_param(config.bb_std_mult)}")
+    _config_params = {
+        "entry_tf": config.entry_tf,
+        "stop_atr_mult": config.stop_atr_mult,
+        "target_atr_mult": config.target_atr_mult,
+        "atr_period": config.atr_period,
+        "bb_period": config.bb_period,
+        "bb_std_mult": config.bb_std_mult,
+    }
+
+    with capture_prints() as cap:
+        _print_summary(results, config)
+        _save_results(results, config, stem)
+        _print_verdict(results, config)
+
+    md_path = config.results_dir / f"step2_bb_results_{stem}.md"
+    actual_path = save_report(
+        cap.text,
+        md_path,
+        f"Bear Strategy — BB Widening Setup Edge Check  (entry_tf={config.entry_tf})",
+        config_params=_config_params,
+    )
+    logger.info("Analysis report saved → %s", actual_path)
 
 
 # ---------------------------------------------------------------------------
@@ -125,10 +147,11 @@ def _print_summary(results: pd.DataFrame, config: TestConfig) -> None:
         print()
 
 
-def _save_results(results: pd.DataFrame, config: TestConfig) -> None:
-    config.results_dir.mkdir(parents=True, exist_ok=True)
-    filename = f"step2_bb_results_entry{config.entry_tf}.csv"
-    out = config.results_dir / filename
+def _save_results(results: pd.DataFrame, config: TestConfig, stem: str) -> None:
+    csv_dir = config.results_dir / "csv"
+    csv_dir.mkdir(parents=True, exist_ok=True)
+    filename = f"step2_bb_results_{stem}.csv"
+    out = csv_dir / filename
     results.reset_index().to_csv(out, index=False)
     logger.info("Results saved → %s", out)
 

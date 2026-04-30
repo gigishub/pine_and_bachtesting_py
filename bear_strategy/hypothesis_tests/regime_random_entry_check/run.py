@@ -8,6 +8,10 @@ The script runs the test, prints a summary table, and writes CSV results to
 ``config.results_dir``.  It also prints a clear verdict against the
 falsification thresholds defined in the hypothesis document.
 
+Result files (stem encodes all exit parameters):
+    step1_results_entry{entry_tf}_sl{stop_atr_mult}_tp{target_atr_mult}_atr{atr_period}.csv
+    step1_results_entry{entry_tf}_sl{stop_atr_mult}_tp{target_atr_mult}_atr{atr_period}.md
+
 --sweep sweeps the EMA slope lookback (1, 2, 3, 5 bars) to find the most
 selective lookback for each EMA period.
 """
@@ -21,9 +25,9 @@ from pathlib import Path
 
 import pandas as pd
 
+from bear_strategy.hypothesis_tests.report_writer import capture_prints, save_report, run_stem
 from bear_strategy.hypothesis_tests.regime_random_entry_check.config import TestConfig
 from bear_strategy.hypothesis_tests.regime_random_entry_check.runner import run_test
-from bear_strategy.hypothesis_tests.experiment_config import ExperimentConfig
 
 logging.basicConfig(
     level=logging.INFO,
@@ -34,7 +38,7 @@ logger = logging.getLogger(__name__)
 
 
 def main() -> None:
-    config = TestConfig.from_experiment(ExperimentConfig())
+    config = TestConfig()
 
     logger.info("=" * 70)
     logger.info("Bear Strategy — Step 1: Regime Random Entry Check")
@@ -52,9 +56,27 @@ def main() -> None:
         logger.error("No results produced — check that parquet data is available.")
         sys.exit(1)
 
-    _print_summary(results, config)
-    _save_results(results, config)
-    _print_verdict(results, config)
+    stem = run_stem(config.entry_tf, config.stop_atr_mult, config.target_atr_mult, config.atr_period)
+    _config_params = {
+        "entry_tf": config.entry_tf,
+        "stop_atr_mult": config.stop_atr_mult,
+        "target_atr_mult": config.target_atr_mult,
+        "atr_period": config.atr_period,
+    }
+
+    with capture_prints() as cap:
+        _print_summary(results, config)
+        _save_results(results, config, stem)
+        _print_verdict(results, config)
+
+    md_path = config.results_dir / f"step1_results_{stem}.md"
+    actual_path = save_report(
+        cap.text,
+        md_path,
+        f"Bear Strategy — Step 1: Regime Random Entry Check  (entry_tf={config.entry_tf})",
+        config_params=_config_params,
+    )
+    logger.info("Analysis report saved → %s", actual_path)
 
 
 def _population_names(config: TestConfig) -> list[str]:
@@ -89,10 +111,11 @@ def _print_summary(results: pd.DataFrame, config: TestConfig) -> None:
     print()
 
 
-def _save_results(results: pd.DataFrame, config: TestConfig) -> None:
-    config.results_dir.mkdir(parents=True, exist_ok=True)
-    filename = f"step1_results_entry{config.entry_tf}.csv"
-    out = config.results_dir / filename
+def _save_results(results: pd.DataFrame, config: TestConfig, stem: str) -> None:
+    csv_dir = config.results_dir / "csv"
+    csv_dir.mkdir(parents=True, exist_ok=True)
+    filename = f"step1_results_{stem}.csv"
+    out = csv_dir / filename
     results.reset_index().to_csv(out, index=False)
     logger.info("Results saved → %s", out)
 

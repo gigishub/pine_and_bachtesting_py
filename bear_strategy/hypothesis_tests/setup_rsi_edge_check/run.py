@@ -10,8 +10,8 @@ Timeframe (set entry_tf in config.py):
     "4h"  — position shorts
 
 Result files:
-    step2_rsi_results_entry{entry_tf}.csv
-    step2_rsi_results_entry{entry_tf}.md   ← full analysis report
+    step2_rsi_results_entry{entry_tf}_sl{stop_atr_mult}_tp{target_atr_mult}_atr{atr_period}.csv
+    step2_rsi_results_entry{entry_tf}_sl{stop_atr_mult}_tp{target_atr_mult}_atr{atr_period}.md   ← full analysis report
 
 ──────────────────────────────────────────────────────────────────────
 What is being tested
@@ -55,7 +55,7 @@ import sys
 import numpy as np
 import pandas as pd
 
-from bear_strategy.hypothesis_tests.report_writer import capture_prints, save_report
+from bear_strategy.hypothesis_tests.report_writer import capture_prints, save_report, run_stem, _fmt_param
 from bear_strategy.hypothesis_tests.setup_rsi_edge_check.config import TestConfig
 from bear_strategy.hypothesis_tests.setup_rsi_edge_check.runner import run_test
 
@@ -69,6 +69,15 @@ logger = logging.getLogger(__name__)
 
 def main() -> None:
     config = TestConfig()
+
+    rsi_zone_lbl = f"rsi_{_fmt_param(config.rsi_lower)}_{_fmt_param(config.rsi_upper)}"
+    rsi_below_lbl = f"rsi_below_{_fmt_param(config.rsi_upper)}"
+    rsi_above_lbl = f"rsi_above_{_fmt_param(config.rsi_lower)}"
+    pop_display = {
+        "rsi_30_50": rsi_zone_lbl,
+        "rsi_below_50": rsi_below_lbl,
+        "rsi_above_30": rsi_above_lbl,
+    }
 
     logger.info("=" * 70)
     logger.info("Bear Strategy — RSI Setup Edge Check")
@@ -86,8 +95,8 @@ def main() -> None:
     )
     logger.info("Pass threshold: ≥ %d of %d pairs", config.min_pairs_passing, len(config.pairs))
     logger.info(
-        "Coverage guard: rsi_30_50 must keep ≥ %.0f%% of regime bars",
-        config.min_coverage_ratio * 100,
+        "Coverage guard: %s must keep ≥ %.0f%% of regime bars",
+        rsi_zone_lbl, config.min_coverage_ratio * 100,
     )
     logger.info("=" * 70)
 
@@ -97,19 +106,32 @@ def main() -> None:
         logger.error("No results — check parquet data availability.")
         sys.exit(1)
 
-    report_path = config.results_dir / f"step2_rsi_results_entry{config.entry_tf}.md"
+    stem = run_stem(config.entry_tf, config.stop_atr_mult, config.target_atr_mult, config.atr_period,
+                    extra=f"rsi{config.rsi_period}_{_fmt_param(config.rsi_lower)}_{_fmt_param(config.rsi_upper)}")
+    _config_params = {
+        "entry_tf": config.entry_tf,
+        "stop_atr_mult": config.stop_atr_mult,
+        "target_atr_mult": config.target_atr_mult,
+        "atr_period": config.atr_period,
+        "rsi_period": config.rsi_period,
+        "rsi_lower": config.rsi_lower,
+        "rsi_upper": config.rsi_upper,
+    }
+
+    report_path = config.results_dir / f"step2_rsi_results_{stem}.md"
 
     with capture_prints() as cap:
-        _print_summary(results, config)
-        _save_results(results, config)
-        _print_verdict(results, config)
+        _print_summary(results, config, pop_display)
+        _save_results(results, config, stem)
+        _print_verdict(results, config, pop_display)
 
-    save_report(
+    actual_path = save_report(
         cap.text,
         report_path,
         f"Bear Strategy — RSI Setup Edge Check  (entry_tf={config.entry_tf})",
+        config_params=_config_params,
     )
-    logger.info("Analysis report saved → %s", report_path)
+    logger.info("Analysis report saved → %s", actual_path)
 
 
 # ---------------------------------------------------------------------------
@@ -117,7 +139,7 @@ def main() -> None:
 # ---------------------------------------------------------------------------
 
 
-def _print_summary(results: pd.DataFrame, config: TestConfig) -> None:
+def _print_summary(results: pd.DataFrame, config: TestConfig, pop_display: dict[str, str]) -> None:
     print("\n── Per-Pair Results ──\n")
     df = results.reset_index()
 
@@ -129,26 +151,28 @@ def _print_summary(results: pd.DataFrame, config: TestConfig) -> None:
         print(f"  {pair}")
         ordered = [p for p in ["regime_only", "rsi_30_50", "rsi_below_50", "rsi_above_30"] if p in pair_df.index]
         subset = pair_df.reindex(ordered).copy()
+        subset.index = [pop_display.get(p, p) for p in subset.index]
         subset["wr_%"] = (subset["win_rate"] * 100).round(2)
         subset["pf"] = subset["profit_factor"].round(3)
         subset["dur"] = subset["avg_duration"].round(1)
 
         print(subset[["wr_%", "pf", "dur", "n_trades"]].to_string())
 
-        # Coverage: rsi_30_50 vs regime_only bar count.
+        # Coverage: primary zone vs regime_only bar count.
         regime_n = pair_df.loc["regime_only", "n_trades"] if "regime_only" in pair_df.index else 0
         rsi_n = pair_df.loc["rsi_30_50", "n_trades"] if "rsi_30_50" in pair_df.index else 0
         if regime_n > 0:
             coverage = rsi_n / regime_n
             flag = "⚠️  LOW COVERAGE" if coverage < config.min_coverage_ratio else ""
-            print(f"    rsi_30_50 covers {coverage * 100:.1f}% of regime bars  {flag}")
+            print(f"    {pop_display.get('rsi_30_50', 'rsi_30_50')} covers {coverage * 100:.1f}% of regime bars  {flag}")
         print()
 
 
-def _save_results(results: pd.DataFrame, config: TestConfig) -> None:
-    config.results_dir.mkdir(parents=True, exist_ok=True)
-    filename = f"step2_rsi_results_entry{config.entry_tf}.csv"
-    out = config.results_dir / filename
+def _save_results(results: pd.DataFrame, config: TestConfig, stem: str) -> None:
+    csv_dir = config.results_dir / "csv"
+    csv_dir.mkdir(parents=True, exist_ok=True)
+    filename = f"step2_rsi_results_{stem}.csv"
+    out = csv_dir / filename
     results.reset_index().to_csv(out, index=False)
     logger.info("Results saved → %s", out)
 
@@ -168,7 +192,7 @@ def _min_pf_diff(config: TestConfig, smaller_n: int) -> float:
     return config.min_pf_diff_low_n
 
 
-def _print_verdict(results: pd.DataFrame, config: TestConfig) -> None:
+def _print_verdict(results: pd.DataFrame, config: TestConfig, pop_display: dict[str, str]) -> None:
     df = results.reset_index()
 
     baseline_df = df[df["population"] == "regime_only"].set_index("pair")
@@ -195,8 +219,9 @@ def _print_verdict(results: pd.DataFrame, config: TestConfig) -> None:
 
     for pop in populations_to_test:
         pop_df = df[df["population"] == pop].set_index("pair")
+        lbl = pop_display.get(pop, pop)
         if pop_df.empty:
-            print(f"  {pop:<14}  — no data")
+            print(f"  {lbl:<14}  — no data")
             continue
 
         joined = pop_df.join(baseline)
@@ -235,7 +260,7 @@ def _print_verdict(results: pd.DataFrame, config: TestConfig) -> None:
         status = "✅" if overall else "❌"
 
         print(
-            f"  {pop:<14}  avg WR lift {avg_wr_lift:+.2f}pp  avg PF {avg_pf:.3f}"
+            f"  {lbl:<14}  avg WR lift {avg_wr_lift:+.2f}pp  avg PF {avg_pf:.3f}"
             f"  avg PF lift {avg_pf_lift:+.3f}"
             f"  pairs ≥ threshold: {n_passing}/{n_pairs}  {status}"
         )
@@ -265,10 +290,10 @@ def _print_verdict(results: pd.DataFrame, config: TestConfig) -> None:
     )
     print()
 
-    _print_final_verdict(passing, config)
+    _print_final_verdict(passing, config, pop_display)
 
 
-def _print_final_verdict(passing: list[tuple[str, float]], config: TestConfig) -> None:
+def _print_final_verdict(passing: list[tuple[str, float]], config: TestConfig, pop_display: dict[str, str]) -> None:
     if not passing:
         print("  ❌  RSI SETUP EDGE NOT CONFIRMED — no RSI population clears all thresholds.")
         print("      Next steps:")
@@ -282,9 +307,13 @@ def _print_final_verdict(passing: list[tuple[str, float]], config: TestConfig) -
     print("  ✅  RSI SETUP EDGE CONFIRMED — RSI zone creates a measurable edge.")
     pop_names = {p for p, _ in passing}
     best_pop, best_pf = max(passing, key=lambda x: x[1])
-    print(f"      Best performer: {best_pop}  (avg PF {best_pf:.3f})")
+    print(f"      Best performer: {pop_display.get(best_pop, best_pop)}  (avg PF {best_pf:.3f})")
     print("      Proceed to Step 3 (volume trigger confirmation).")
     print()
+
+    zone_lbl = pop_display.get("rsi_30_50", "rsi_30_50")
+    upper_lbl = pop_display.get("rsi_below_50", "rsi_below_50")
+    lower_lbl = pop_display.get("rsi_above_30", "rsi_above_30")
 
     print("  ── Boundary Attribution ──")
     has_both = "rsi_30_50" in pop_names
@@ -296,23 +325,23 @@ def _print_final_verdict(passing: list[tuple[str, float]], config: TestConfig) -
         pf_upper = next(pf for p, pf in passing if p == "rsi_below_50")
         pf_lower = next(pf for p, pf in passing if p == "rsi_above_30")
         if pf_both >= max(pf_upper, pf_lower):
-            print("      Combined zone [30, 50] is strongest → keep both boundaries.")
+            print(f"      Combined zone [{zone_lbl}] is strongest → keep both boundaries.")
         elif pf_upper > pf_lower:
-            print(f"      rsi_below_50 (PF {pf_upper:.3f}) > rsi_above_30 (PF {pf_lower:.3f})")
-            print("      → RSI < 50 cap drives the edge; the RSI > 30 floor adds little.")
-            print("        Consider rsi_below_50 for Step 3 to preserve more trade count.")
+            print(f"      {upper_lbl} (PF {pf_upper:.3f}) > {lower_lbl} (PF {pf_lower:.3f})")
+            print("      → RSI < cap drives the edge; the RSI > floor adds little.")
+            print(f"        Consider {upper_lbl} for Step 3 to preserve more trade count.")
         else:
-            print(f"      rsi_above_30 (PF {pf_lower:.3f}) > rsi_below_50 (PF {pf_upper:.3f})")
-            print("      → Oversold exclusion (RSI > 30) drives the edge; upper cap adds little.")
-            print("        Consider rsi_above_30 for Step 3 to preserve more trade count.")
+            print(f"      {lower_lbl} (PF {pf_lower:.3f}) > {upper_lbl} (PF {pf_upper:.3f})")
+            print("      → Oversold exclusion (RSI > floor) drives the edge; upper cap adds little.")
+            print(f"        Consider {lower_lbl} for Step 3 to preserve more trade count.")
     elif has_both and not has_upper and not has_lower:
-        print("      Only the combined zone [30, 50] passes — both boundaries required together.")
+        print(f"      Only the combined zone [{zone_lbl}] passes — both boundaries required together.")
     elif has_upper and not has_both:
-        print("      rsi_below_50 passes; rsi_30_50 does not.")
-        print("      → RSI > 30 floor is over-restrictive; use rsi_below_50 for Step 3.")
+        print(f"      {upper_lbl} passes; {zone_lbl} does not.")
+        print(f"      → RSI > floor is over-restrictive; use {upper_lbl} for Step 3.")
     elif has_lower and not has_both:
-        print("      rsi_above_30 passes; rsi_30_50 does not.")
-        print("      → RSI < 50 cap is over-restrictive; use rsi_above_30 for Step 3.")
+        print(f"      {lower_lbl} passes; {zone_lbl} does not.")
+        print(f"      → RSI < cap is over-restrictive; use {lower_lbl} for Step 3.")
     print()
 
 

@@ -1,19 +1,13 @@
 """Configuration for the regime random-entry falsification test (Step 1).
 
 Adjust ``pairs`` and ``date_range`` to match your available parquet data.
-To sweep timeframes or exit sizing across all steps, edit
-``bear_strategy/hypothesis_tests/experiment_config.py`` and use
-``TestConfig.from_experiment(ExperimentConfig())``.
+Edit fields directly in this dataclass to change timeframe or exit sizing.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import TYPE_CHECKING
-
-if TYPE_CHECKING:
-    from bear_strategy.hypothesis_tests.experiment_config import ExperimentConfig
 
 
 @dataclass
@@ -30,7 +24,7 @@ class TestConfig:
     # ------------------------------------------------------------------ #
     stop_atr_mult: float = 2.0    # Stop placed at entry + stop_atr_mult × ATR
     target_atr_mult: float = 3.0  # Target placed at entry - target_atr_mult × ATR
-    atr_period: int = 14          # ATR lookback on entry_tf bars
+    atr_period: int = 7           # ATR lookback on entry_tf bars
 
     # ------------------------------------------------------------------ #
     # Falsification thresholds
@@ -78,16 +72,3 @@ class TestConfig:
             "bear_strategy/backtest/hypothesis_tests_raw/results/step1_regime_check"
         )
     )
-
-    # ------------------------------------------------------------------ #
-    # Factory: build from shared ExperimentConfig
-    # ------------------------------------------------------------------ #
-    @classmethod
-    def from_experiment(cls, exp: "ExperimentConfig") -> "TestConfig":
-        """Create a TestConfig using shared TF and exit settings."""
-        return cls(
-            entry_tf=exp.entry_tf,
-            stop_atr_mult=exp.stop_atr_mult,
-            target_atr_mult=exp.target_atr_mult,
-            atr_period=exp.atr_period,
-        )

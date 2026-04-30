@@ -18,7 +18,8 @@ Timeframe configuration (set in config.py):
 Regime filter: ema_below_50 (Step 1 winner).
 See: bear_strategy/backtest/hypothesis_tests_raw/results/step1_regime_check/step1_results.csv
 
-Result file is named: step2_results_entry{entry_tf}_context{context_tf}.csv
+Result file is named: step2_results_entry{entry_tf}_ctx{context_tf}_sl{stop_atr_mult}_tp{target_atr_mult}_atr{atr_period}.csv
+                      step2_results_entry{entry_tf}_ctx{context_tf}_sl{stop_atr_mult}_tp{target_atr_mult}_atr{atr_period}.md
 
 Verdict logic:
     Baseline for comparison = away_from_setup population.
@@ -42,7 +43,7 @@ import pandas as pd
 
 from bear_strategy.hypothesis_tests.setup_level_edge_check.config import TestConfig
 from bear_strategy.hypothesis_tests.setup_level_edge_check.runner import run_test
-from bear_strategy.hypothesis_tests.experiment_config import ExperimentConfig
+from bear_strategy.hypothesis_tests.report_writer import capture_prints, save_report, run_stem
 
 logging.basicConfig(
     level=logging.INFO,
@@ -53,7 +54,7 @@ logger = logging.getLogger(__name__)
 
 
 def main() -> None:
-    config = TestConfig.from_experiment(ExperimentConfig())
+    config = TestConfig()
 
     logger.info("=" * 70)
     logger.info("Bear Strategy — Step 2: Setup Level Edge Check")
@@ -72,9 +73,36 @@ def main() -> None:
         logger.error("No results — check parquet data availability.")
         sys.exit(1)
 
-    _print_summary(results, config)
-    _save_results(results, config)
-    _print_verdict(results, config)
+    stem = run_stem(
+        config.entry_tf,
+        config.stop_atr_mult,
+        config.target_atr_mult,
+        config.atr_period,
+        context_tf=config.context_tf,
+    )
+    _config_params = {
+        "entry_tf": config.entry_tf,
+        "context_tf": config.context_tf,
+        "stop_atr_mult": config.stop_atr_mult,
+        "target_atr_mult": config.target_atr_mult,
+        "atr_period": config.atr_period,
+        "setup_distance_atr": config.setup_distance_atr,
+        "vpvr_window": config.vpvr_window,
+    }
+
+    with capture_prints() as cap:
+        _print_summary(results, config)
+        _save_results(results, config, stem)
+        _print_verdict(results, config)
+
+    md_path = config.results_dir / f"step2_results_{stem}.md"
+    actual_path = save_report(
+        cap.text,
+        md_path,
+        f"Bear Strategy — Step 2: Setup Level Edge Check  (entry_tf={config.entry_tf})",
+        config_params=_config_params,
+    )
+    logger.info("Analysis report saved → %s", actual_path)
 
 
 # ---------------------------------------------------------------------------
@@ -104,10 +132,11 @@ def _print_summary(results: pd.DataFrame, config: TestConfig) -> None:
         print()
 
 
-def _save_results(results: pd.DataFrame, config: TestConfig) -> None:
-    config.results_dir.mkdir(parents=True, exist_ok=True)
-    filename = f"step2_results_entry{config.entry_tf}_context{config.context_tf}.csv"
-    out = config.results_dir / filename
+def _save_results(results: pd.DataFrame, config: TestConfig, stem: str) -> None:
+    csv_dir = config.results_dir / "csv"
+    csv_dir.mkdir(parents=True, exist_ok=True)
+    filename = f"step2_results_{stem}.csv"
+    out = csv_dir / filename
     results.reset_index().to_csv(out, index=False)
     logger.info("Results saved → %s", out)
 

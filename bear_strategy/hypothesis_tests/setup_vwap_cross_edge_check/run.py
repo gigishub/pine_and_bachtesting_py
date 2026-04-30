@@ -14,8 +14,8 @@ Key parameters (set in config.py):
     min_bars_above N — consecutive bars above VWAP required before the cross
 
 Result files:
-    step2_vwap_cross_results_entry{entry_tf}_N{min_bars_above}.csv
-    step2_vwap_cross_results_entry{entry_tf}_N{min_bars_above}.md
+    step2_vwap_cross_results_entry{entry_tf}_N{min_bars_above}_sl{stop_atr_mult}_tp{target_atr_mult}_atr{atr_period}.csv
+    step2_vwap_cross_results_entry{entry_tf}_N{min_bars_above}_sl{stop_atr_mult}_tp{target_atr_mult}_atr{atr_period}.md
 
 ──────────────────────────────────────────────────────────────────────
 What is being tested
@@ -49,7 +49,7 @@ import sys
 
 import pandas as pd
 
-from bear_strategy.hypothesis_tests.report_writer import capture_prints, save_report
+from bear_strategy.hypothesis_tests.report_writer import capture_prints, save_report, run_stem
 from bear_strategy.hypothesis_tests.setup_vwap_cross_edge_check.config import TestConfig
 from bear_strategy.hypothesis_tests.setup_vwap_cross_edge_check.runner import run_test
 
@@ -87,15 +87,31 @@ def main() -> None:
         logger.error("No results — check parquet data availability.")
         sys.exit(1)
 
-    stem = f"step2_vwap_cross_results_entry{config.entry_tf}_N{config.min_bars_above}"
+    stem = run_stem(
+        config.entry_tf, config.stop_atr_mult, config.target_atr_mult, config.atr_period,
+        extra=f"anchor{config.vwap_anchor}_N{config.min_bars_above}",
+    )
+    _config_params = {
+        "entry_tf": config.entry_tf,
+        "stop_atr_mult": config.stop_atr_mult,
+        "target_atr_mult": config.target_atr_mult,
+        "atr_period": config.atr_period,
+        "vwap_anchor": config.vwap_anchor,
+        "min_bars_above": config.min_bars_above,
+    }
 
     with capture_prints() as buf:
         _print_summary(results, config)
         _save_results(results, config, stem)
         _print_verdict(results, config)
 
-    md_path = config.results_dir / f"{stem}.md"
-    save_report(buf.text, md_path, title="VWAP Cross-Below Setup Edge Check")
+    md_path = config.results_dir / f"step2_vwap_cross_results_{stem}.md"
+    save_report(
+        buf.text,
+        md_path,
+        f"Bear Strategy — VWAP Cross-Below Setup Edge Check  (entry_tf={config.entry_tf})",
+        config_params=_config_params,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -131,8 +147,9 @@ def _print_summary(results: pd.DataFrame, config: TestConfig) -> None:
 
 
 def _save_results(results: pd.DataFrame, config: TestConfig, stem: str) -> None:
-    config.results_dir.mkdir(parents=True, exist_ok=True)
-    out = config.results_dir / f"{stem}.csv"
+    csv_dir = config.results_dir / "csv"
+    csv_dir.mkdir(parents=True, exist_ok=True)
+    out = csv_dir / f"step2_vwap_cross_results_{stem}.csv"
     results.reset_index().to_csv(out, index=False)
     logger.info("Results saved → %s", out)
 

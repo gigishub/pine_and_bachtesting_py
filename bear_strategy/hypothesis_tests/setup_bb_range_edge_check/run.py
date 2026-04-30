@@ -10,8 +10,8 @@ Timeframe (set entry_tf in config.py):
     "4h"  — position shorts
 
 Result files:
-    step2_bb_range_results_entry{entry_tf}.csv
-    step2_bb_range_results_entry{entry_tf}.md   ← full analysis report
+    step2_bb_range_results_entry{entry_tf}_sl{stop_atr_mult}_tp{target_atr_mult}_atr{atr_period}.csv
+    step2_bb_range_results_entry{entry_tf}_sl{stop_atr_mult}_tp{target_atr_mult}_atr{atr_period}.md
 
 ──────────────────────────────────────────────────────────────────────
 What is being tested
@@ -59,7 +59,7 @@ import sys
 import numpy as np
 import pandas as pd
 
-from bear_strategy.hypothesis_tests.report_writer import capture_prints, save_report
+from bear_strategy.hypothesis_tests.report_writer import capture_prints, save_report, run_stem, _fmt_param
 from bear_strategy.hypothesis_tests.setup_bb_range_edge_check.config import TestConfig
 from bear_strategy.hypothesis_tests.setup_bb_range_edge_check.runner import run_test
 
@@ -98,19 +98,31 @@ def main() -> None:
         logger.error("No results — check parquet data availability.")
         sys.exit(1)
 
-    report_path = config.results_dir / f"step2_bb_range_results_entry{config.entry_tf}.md"
+    stem = run_stem(config.entry_tf, config.stop_atr_mult, config.target_atr_mult, config.atr_period,
+                    extra=f"bb{config.bb_period}_std{_fmt_param(config.bb_std_mult)}")
+    _config_params = {
+        "entry_tf": config.entry_tf,
+        "stop_atr_mult": config.stop_atr_mult,
+        "target_atr_mult": config.target_atr_mult,
+        "atr_period": config.atr_period,
+        "bb_period": config.bb_period,
+        "bb_std_mult": config.bb_std_mult,
+    }
+
+    report_path = config.results_dir / f"step2_bb_range_results_{stem}.md"
 
     with capture_prints() as cap:
         _print_summary(results, config)
-        _save_results(results, config)
+        _save_results(results, config, stem)
         _print_verdict(results, config)
 
-    save_report(
+    actual_path = save_report(
         cap.text,
         report_path,
         f"Bear Strategy — BB Range Setup Edge Check  (entry_tf={config.entry_tf})",
+        config_params=_config_params,
     )
-    logger.info("Analysis report saved → %s", report_path)
+    logger.info("Analysis report saved → %s", actual_path)
 
 
 # ---------------------------------------------------------------------------
@@ -146,10 +158,10 @@ def _print_summary(results: pd.DataFrame, config: TestConfig) -> None:
         print()
 
 
-def _save_results(results: pd.DataFrame, config: TestConfig) -> None:
-    config.results_dir.mkdir(parents=True, exist_ok=True)
-    filename = f"step2_bb_range_results_entry{config.entry_tf}.csv"
-    out = config.results_dir / filename
+def _save_results(results: pd.DataFrame, config: TestConfig, stem: str) -> None:
+    csv_dir = config.results_dir / "csv"
+    csv_dir.mkdir(parents=True, exist_ok=True)
+    out = csv_dir / f"step2_bb_range_results_{stem}.csv"
     results.reset_index().to_csv(out, index=False)
     logger.info("Results saved → %s", out)
 

@@ -28,7 +28,8 @@ Verdict logic:
         - n_trades > min_trades_per_pair
     Overall pass: clears all thresholds on ≥ 3 of 4 pairs.
 
-Result file is named: step3_results_entry{entry_tf}.csv
+Result file is named: step3_results_entry{entry_tf}_sl{stop_atr_mult}_tp{target_atr_mult}_atr{atr_period}.csv
+                      step3_results_entry{entry_tf}_sl{stop_atr_mult}_tp{target_atr_mult}_atr{atr_period}.md
 """
 
 from __future__ import annotations
@@ -42,7 +43,7 @@ import pandas as pd
 
 from bear_strategy.hypothesis_tests.trigger_volume_confirmation.config import TestConfig
 from bear_strategy.hypothesis_tests.trigger_volume_confirmation.runner import run_test
-from bear_strategy.hypothesis_tests.experiment_config import ExperimentConfig
+from bear_strategy.hypothesis_tests.report_writer import capture_prints, save_report, run_stem
 
 logging.basicConfig(
     level=logging.INFO,
@@ -53,7 +54,7 @@ logger = logging.getLogger(__name__)
 
 
 def main() -> None:
-    config = TestConfig.from_experiment(ExperimentConfig())
+    config = TestConfig()
 
     logger.info("=" * 70)
     logger.info("Bear Strategy — Step 3: Trigger Volume Confirmation")
@@ -78,9 +79,29 @@ def main() -> None:
         logger.error("No results — check parquet data availability.")
         sys.exit(1)
 
-    _print_summary(results, config)
-    _save_results(results, config)
-    _print_verdict(results, config)
+    stem = run_stem(config.entry_tf, config.stop_atr_mult, config.target_atr_mult, config.atr_period)
+    _config_params = {
+        "entry_tf": config.entry_tf,
+        "stop_atr_mult": config.stop_atr_mult,
+        "target_atr_mult": config.target_atr_mult,
+        "atr_period": config.atr_period,
+        "volume_window": config.volume_window,
+        "volume_mult": config.volume_mult,
+    }
+
+    with capture_prints() as cap:
+        _print_summary(results, config)
+        _save_results(results, config, stem)
+        _print_verdict(results, config)
+
+    md_path = config.results_dir / f"step3_results_{stem}.md"
+    actual_path = save_report(
+        cap.text,
+        md_path,
+        f"Bear Strategy — Step 3: Trigger Volume Confirmation  (entry_tf={config.entry_tf})",
+        config_params=_config_params,
+    )
+    logger.info("Analysis report saved → %s", actual_path)
 
 
 # ---------------------------------------------------------------------------
@@ -106,10 +127,11 @@ def _print_summary(results: pd.DataFrame, config: TestConfig) -> None:
         print()
 
 
-def _save_results(results: pd.DataFrame, config: TestConfig) -> None:
-    config.results_dir.mkdir(parents=True, exist_ok=True)
-    filename = f"step3_results_entry{config.entry_tf}.csv"
-    out = config.results_dir / filename
+def _save_results(results: pd.DataFrame, config: TestConfig, stem: str) -> None:
+    csv_dir = config.results_dir / "csv"
+    csv_dir.mkdir(parents=True, exist_ok=True)
+    filename = f"step3_results_{stem}.csv"
+    out = csv_dir / filename
     results.reset_index().to_csv(out, index=False)
     logger.info("Results saved → %s", out)
 

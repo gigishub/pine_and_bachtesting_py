@@ -10,8 +10,8 @@ Timeframe (set entry_tf in config.py):
     "4h"  — position shorts
 
 Result files:
-    step2_ema_vwap_results_entry{entry_tf}.csv
-    step2_ema_vwap_results_entry{entry_tf}.md
+    step2_ema_vwap_results_entry{entry_tf}_sl{stop_atr_mult}_tp{target_atr_mult}_atr{atr_period}.csv
+    step2_ema_vwap_results_entry{entry_tf}_sl{stop_atr_mult}_tp{target_atr_mult}_atr{atr_period}.md
 
 ──────────────────────────────────────────────────────────────────────
 What is being tested
@@ -50,7 +50,7 @@ import sys
 
 import pandas as pd
 
-from bear_strategy.hypothesis_tests.report_writer import capture_prints, save_report
+from bear_strategy.hypothesis_tests.report_writer import capture_prints, save_report, run_stem, _fmt_param
 from bear_strategy.hypothesis_tests.setup_ema_vwap_edge_check.config import TestConfig
 from bear_strategy.hypothesis_tests.setup_ema_vwap_edge_check.runner import run_test
 
@@ -92,15 +92,32 @@ def main() -> None:
         logger.error("No results — check parquet data availability.")
         sys.exit(1)
 
-    stem = f"step2_ema_vwap_results_entry{config.entry_tf}"
+    stem = run_stem(config.entry_tf, config.stop_atr_mult, config.target_atr_mult, config.atr_period,
+                    extra=f"ema{config.ema_period}_vstd{_fmt_param(config.vwap_std_mult)}")
+    _config_params = {
+        "entry_tf": config.entry_tf,
+        "stop_atr_mult": config.stop_atr_mult,
+        "target_atr_mult": config.target_atr_mult,
+        "atr_period": config.atr_period,
+        "ema_period": config.ema_period,
+        "vwap_anchor": config.vwap_anchor,
+        "vwap_std_mult": config.vwap_std_mult,
+    }
+
+    pop_display = {"below_ema20": f"below_ema{config.ema_period}"}
 
     with capture_prints() as buf:
-        _print_summary(results, config)
+        _print_summary(results, config, pop_display)
         _save_results(results, config, stem)
-        _print_verdict(results, config)
+        _print_verdict(results, config, pop_display)
 
-    md_path = config.results_dir / f"{stem}.md"
-    save_report(buf.text, md_path, title="EMA20 / VWAP Setup Edge Check")
+    md_path = config.results_dir / f"step2_ema_vwap_results_{stem}.md"
+    save_report(
+        buf.text,
+        md_path,
+        f"Bear Strategy — EMA20 / VWAP Setup Edge Check  (entry_tf={config.entry_tf})",
+        config_params=_config_params,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -108,7 +125,7 @@ def main() -> None:
 # ---------------------------------------------------------------------------
 
 
-def _print_summary(results: pd.DataFrame, config: TestConfig) -> None:
+def _print_summary(results: pd.DataFrame, config: TestConfig, pop_display: dict[str, str]) -> None:
     print("\n── Per-Pair Results ──\n")
     df = results.reset_index()
 
@@ -122,6 +139,7 @@ def _print_summary(results: pd.DataFrame, config: TestConfig) -> None:
         print(f"  {pair}")
         ordered = [p for p in ordered_pops if p in pair_df.index]
         subset = pair_df.reindex(ordered).copy()
+        subset.index = [pop_display.get(p, p) for p in subset.index]
         subset["wr_%"] = (subset["win_rate"] * 100).round(2)
         subset["pf"] = subset["profit_factor"].round(3)
         subset["dur"] = subset["avg_duration"].round(1)
@@ -133,13 +151,14 @@ def _print_summary(results: pd.DataFrame, config: TestConfig) -> None:
                 if pop in pair_df.index:
                     cov = pair_df.loc[pop, "n_trades"] / regime_n
                     flag = "⚠️  LOW" if cov < config.min_coverage_ratio else ""
-                    print(f"    {pop} covers {cov * 100:.1f}% of regime bars  {flag}")
+                    print(f"    {pop_display.get(pop, pop)} covers {cov * 100:.1f}% of regime bars  {flag}")
         print()
 
 
 def _save_results(results: pd.DataFrame, config: TestConfig, stem: str) -> None:
-    config.results_dir.mkdir(parents=True, exist_ok=True)
-    out = config.results_dir / f"{stem}.csv"
+    csv_dir = config.results_dir / "csv"
+    csv_dir.mkdir(parents=True, exist_ok=True)
+    out = csv_dir / f"step2_ema_vwap_results_{stem}.csv"
     results.reset_index().to_csv(out, index=False)
     logger.info("Results saved → %s", out)
 
@@ -159,7 +178,7 @@ def _min_pf_diff(config: TestConfig, smaller_n: int) -> float:
     return config.min_pf_diff_low_n
 
 
-def _print_verdict(results: pd.DataFrame, config: TestConfig) -> None:
+def _print_verdict(results: pd.DataFrame, config: TestConfig, pop_display: dict[str, str]) -> None:
     df = results.reset_index()
 
     baseline_df = df[df["population"] == "regime_only"].set_index("pair")
@@ -186,8 +205,9 @@ def _print_verdict(results: pd.DataFrame, config: TestConfig) -> None:
 
     for pop in populations_to_test:
         pop_df = df[df["population"] == pop].set_index("pair")
+        lbl = pop_display.get(pop, pop)
         if pop_df.empty:
-            print(f"  {pop:<14}  — no data")
+            print(f"  {lbl:<14}  — no data")
             continue
 
         joined = pop_df.join(baseline)
@@ -222,7 +242,7 @@ def _print_verdict(results: pd.DataFrame, config: TestConfig) -> None:
         status = "✅" if overall else "❌"
 
         print(
-            f"  {pop:<14}  avg WR lift {avg_wr_lift:+.2f}pp  avg PF {avg_pf:.3f}"
+            f"  {lbl:<14}  avg WR lift {avg_wr_lift:+.2f}pp  avg PF {avg_pf:.3f}"
             f"  avg PF lift {avg_pf_lift:+.3f}"
             f"  pairs ≥ threshold: {n_passing}/{n_pairs}  {status}"
         )
@@ -253,10 +273,10 @@ def _print_verdict(results: pd.DataFrame, config: TestConfig) -> None:
     )
     print()
 
-    _print_final_verdict(passing, config)
+    _print_final_verdict(passing, config, pop_display)
 
 
-def _print_final_verdict(passing: list[tuple[str, float]], config: TestConfig) -> None:
+def _print_final_verdict(passing: list[tuple[str, float]], config: TestConfig, pop_display: dict[str, str]) -> None:
     if not passing:
         print("  ❌  EMA20/VWAP EDGE NOT CONFIRMED — no filter clears all thresholds.")
         print("      Next steps:")
@@ -267,16 +287,17 @@ def _print_final_verdict(passing: list[tuple[str, float]], config: TestConfig) -
         print()
         return
 
-    print("  ✅  EMA20/VWAP EDGE CONFIRMED — at least one filter creates predictive edge.")
+    print("  ✅  EMA/VWAP EDGE CONFIRMED — at least one filter creates predictive edge.")
     pop_names = {p for p, _ in passing}
     best_pop, best_pf = max(passing, key=lambda x: x[1])
-    print(f"      Best performer: {best_pop}  (avg PF {best_pf:.3f})")
+    print(f"      Best performer: {pop_display.get(best_pop, best_pop)}  (avg PF {best_pf:.3f})")
     print("      Proceed to Step 3 (volume trigger confirmation).")
     print()
 
+    ema_lbl = pop_display.get("below_ema20", "below_ema20")
     print("  ── Filter Interpretation ──")
     if "below_ema20" in pop_names:
-        print("      below_ema20       ✅ — price below EMA adds edge within bear regime.")
+        print(f"      {ema_lbl:<17} ✅ — price below EMA adds edge within bear regime.")
         print("                             Use as setup condition before trigger entry.")
     if "below_vwap" in pop_names:
         print("      below_vwap        ✅ — price below VWAP adds edge within bear regime.")
@@ -290,8 +311,9 @@ def _print_final_verdict(passing: list[tuple[str, float]], config: TestConfig) -
 
     not_passing = [p for p in ["below_ema20", "below_vwap", "below_both", "below_vwap_1std"] if p not in pop_names]
     for p in not_passing:
+        p_lbl = pop_display.get(p, p)
         label = {
-            "below_ema20":       "below_ema20       ❌ — EMA filter does not add edge beyond regime alone.",
+            "below_ema20":       f"{p_lbl:<17} ❌ — EMA filter does not add edge beyond regime alone.",
             "below_vwap":        "below_vwap        ❌ — VWAP filter does not add edge beyond regime alone.",
             "below_both":        "below_both        ❌ — combined EMA+VWAP does not improve over single filters.",
             "below_vwap_1std":   "below_vwap_1std   ❌ — deep below VWAP band does not add extra edge.",

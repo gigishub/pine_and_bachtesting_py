@@ -10,8 +10,8 @@ Timeframe (set entry_tf in config.py):
     "4h"  — position shorts
 
 Result files:
-    step2_supertrend_results_entry{entry_tf}.csv
-    step2_supertrend_results_entry{entry_tf}.md
+    step2_supertrend_results_entry{entry_tf}_sl{stop_atr_mult}_tp{target_atr_mult}_atr{atr_period}.csv
+    step2_supertrend_results_entry{entry_tf}_sl{stop_atr_mult}_tp{target_atr_mult}_atr{atr_period}.md
 
 ──────────────────────────────────────────────────────────────────────
 What is being tested
@@ -53,7 +53,7 @@ import sys
 import numpy as np
 import pandas as pd
 
-from bear_strategy.hypothesis_tests.report_writer import capture_prints, save_report
+from bear_strategy.hypothesis_tests.report_writer import capture_prints, save_report, run_stem, _fmt_param
 from bear_strategy.hypothesis_tests.setup_supertrend_edge_check.config import TestConfig
 from bear_strategy.hypothesis_tests.setup_supertrend_edge_check.runner import run_test
 
@@ -97,13 +97,30 @@ def main() -> None:
         logger.error("No results — check parquet data availability.")
         sys.exit(1)
 
+    stem = run_stem(config.entry_tf, config.stop_atr_mult, config.target_atr_mult, config.atr_period,
+                    extra=f"st{config.st_length}_x{_fmt_param(config.st_multiplier)}")
+    _config_params = {
+        "entry_tf": config.entry_tf,
+        "stop_atr_mult": config.stop_atr_mult,
+        "target_atr_mult": config.target_atr_mult,
+        "atr_period": config.atr_period,
+        "st_length": config.st_length,
+        "st_multiplier": config.st_multiplier,
+        "proximity_atr_mult": config.proximity_atr_mult,
+    }
+
     with capture_prints() as buf:
         _print_summary(results, config)
-        _save_results(results, config)
+        _save_results(results, config, stem)
         _print_verdict(results, config)
 
-    md_path = config.results_dir / f"step2_supertrend_results_entry{config.entry_tf}.md"
-    save_report(buf.text, md_path, title="SuperTrend Setup Edge Check")
+    md_path = config.results_dir / f"step2_supertrend_results_{stem}.md"
+    save_report(
+        buf.text,
+        md_path,
+        f"Bear Strategy — SuperTrend Setup Edge Check  (entry_tf={config.entry_tf})",
+        config_params=_config_params,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -142,10 +159,10 @@ def _print_summary(results: pd.DataFrame, config: TestConfig) -> None:
         print()
 
 
-def _save_results(results: pd.DataFrame, config: TestConfig) -> None:
-    config.results_dir.mkdir(parents=True, exist_ok=True)
-    filename = f"step2_supertrend_results_entry{config.entry_tf}.csv"
-    out = config.results_dir / filename
+def _save_results(results: pd.DataFrame, config: TestConfig, stem: str) -> None:
+    csv_dir = config.results_dir / "csv"
+    csv_dir.mkdir(parents=True, exist_ok=True)
+    out = csv_dir / f"step2_supertrend_results_{stem}.csv"
     results.reset_index().to_csv(out, index=False)
     logger.info("Results saved → %s", out)
 

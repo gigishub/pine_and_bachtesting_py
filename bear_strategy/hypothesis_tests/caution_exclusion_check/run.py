@@ -4,12 +4,14 @@ Usage:
     source .venv/bin/activate
     python -m bear_strategy.hypothesis_tests.caution_exclusion_check.run
 
-Timeframe (set entry_tf in experiment_config.py or config.py):
+Timeframe (set entry_tf in config.py):
     "1h"  — swing shorts, 4–48 h holds  ← default
     "15m" — intraday scalps
     "4h"  — position shorts
 
-Result file:  step2b_caution_results_entry{entry_tf}.csv
+Result files (stem encodes all exit parameters):
+    step2b_caution_results_entry{entry_tf}_sl{stop_atr_mult}_tp{target_atr_mult}_atr{atr_period}.csv
+    step2b_caution_results_entry{entry_tf}_sl{stop_atr_mult}_tp{target_atr_mult}_atr{atr_period}.md
 
 ──────────────────────────────────────────────────────────────────────
 What is being tested
@@ -51,9 +53,9 @@ import sys
 import numpy as np
 import pandas as pd
 
-from bear_strategy.hypothesis_tests.experiment_config import ExperimentConfig
 from bear_strategy.hypothesis_tests.caution_exclusion_check.config import TestConfig
 from bear_strategy.hypothesis_tests.caution_exclusion_check.runner import run_test
+from bear_strategy.hypothesis_tests.report_writer import capture_prints, save_report, run_stem, _fmt_param
 
 logging.basicConfig(
     level=logging.INFO,
@@ -64,7 +66,7 @@ logger = logging.getLogger(__name__)
 
 
 def main() -> None:
-    config = TestConfig.from_experiment(ExperimentConfig())
+    config = TestConfig()
 
     logger.info("=" * 70)
     logger.info("Bear Strategy — Step 2b: Caution Exclusion Filter")
@@ -93,9 +95,33 @@ def main() -> None:
         logger.error("No results — check parquet data availability.")
         sys.exit(1)
 
-    _print_summary(results, config)
-    _save_results(results, config)
-    _print_verdict(results, config)
+    stem = run_stem(config.entry_tf, config.stop_atr_mult, config.target_atr_mult, config.atr_period,
+                    extra=f"ema{config.ema20_period}")
+    _config_params = {
+        "entry_tf": config.entry_tf,
+        "stop_atr_mult": config.stop_atr_mult,
+        "target_atr_mult": config.target_atr_mult,
+        "atr_period": config.atr_period,
+        "ema20_period": config.ema20_period,
+        "range_period": config.range_period,
+        "range_atr_mult": config.range_atr_mult,
+    }
+
+    pop_display = {"ema20_filter": f"ema{config.ema20_period}_filter"}
+
+    with capture_prints() as cap:
+        _print_summary(results, config, pop_display)
+        _save_results(results, config, stem)
+        _print_verdict(results, config, pop_display)
+
+    md_path = config.results_dir / f"step2b_caution_results_{stem}.md"
+    actual_path = save_report(
+        cap.text,
+        md_path,
+        f"Bear Strategy — Step 2b: Caution Exclusion Filter  (entry_tf={config.entry_tf})",
+        config_params=_config_params,
+    )
+    logger.info("Analysis report saved → %s", actual_path)
 
 
 # ---------------------------------------------------------------------------
@@ -103,7 +129,7 @@ def main() -> None:
 # ---------------------------------------------------------------------------
 
 
-def _print_summary(results: pd.DataFrame, config: TestConfig) -> None:
+def _print_summary(results: pd.DataFrame, config: TestConfig, pop_display: dict[str, str]) -> None:
     print("\n── Per-Pair Results ──\n")
     df = results.reset_index()
 
@@ -115,6 +141,7 @@ def _print_summary(results: pd.DataFrame, config: TestConfig) -> None:
         print(f"  {pair}")
         ordered = [p for p in _POPULATION_ORDER if p in pair_df.index]
         subset = pair_df.reindex(ordered).copy()
+        subset.index = [pop_display.get(p, p) for p in subset.index]
         subset["wr_%"] = (subset["win_rate"] * 100).round(2)
         subset["pf"] = subset["profit_factor"].round(3)
         subset["dur"] = subset["avg_duration"].round(1)
@@ -134,10 +161,11 @@ def _print_summary(results: pd.DataFrame, config: TestConfig) -> None:
 _POPULATION_ORDER = ["regime_only", "ema20_filter", "range_filter", "no_caution"]
 
 
-def _save_results(results: pd.DataFrame, config: TestConfig) -> None:
-    config.results_dir.mkdir(parents=True, exist_ok=True)
-    filename = f"step2b_caution_results_entry{config.entry_tf}.csv"
-    out = config.results_dir / filename
+def _save_results(results: pd.DataFrame, config: TestConfig, stem: str) -> None:
+    csv_dir = config.results_dir / "csv"
+    csv_dir.mkdir(parents=True, exist_ok=True)
+    filename = f"step2b_caution_results_{stem}.csv"
+    out = csv_dir / filename
     results.reset_index().to_csv(out, index=False)
     logger.info("Results saved → %s", out)
 
@@ -157,7 +185,7 @@ def _min_pf_diff(config: TestConfig, smaller_n: int) -> float:
     return config.min_pf_diff_low_n
 
 
-def _print_verdict(results: pd.DataFrame, config: TestConfig) -> None:
+def _print_verdict(results: pd.DataFrame, config: TestConfig, pop_display: dict[str, str]) -> None:
     df = results.reset_index()
 
     baseline_df = df[df["population"] == "regime_only"].set_index("pair")
@@ -189,8 +217,9 @@ def _print_verdict(results: pd.DataFrame, config: TestConfig) -> None:
 
     for pop in populations_to_test:
         pop_df = df[df["population"] == pop].set_index("pair")
+        lbl = pop_display.get(pop, pop)
         if pop_df.empty:
-            print(f"  {pop:<14}  — no data")
+            print(f"  {lbl:<14}  — no data")
             continue
 
         joined = pop_df.join(baseline)
@@ -229,7 +258,7 @@ def _print_verdict(results: pd.DataFrame, config: TestConfig) -> None:
         status = "✅" if overall else "❌"
 
         print(
-            f"  {pop:<14}  avg WR lift {avg_wr_lift:+.2f}pp  avg PF {avg_pf:.3f}"
+            f"  {lbl:<14}  avg WR lift {avg_wr_lift:+.2f}pp  avg PF {avg_pf:.3f}"
             f"  avg PF lift {avg_pf_lift:+.3f}"
             f"  pairs ≥ threshold: {n_passing}/{n_pairs}  {status}"
         )
@@ -259,13 +288,14 @@ def _print_verdict(results: pd.DataFrame, config: TestConfig) -> None:
     )
     print()
 
-    _print_final_verdict(passing, config)
+    _print_final_verdict(passing, config, pop_display)
 
 
-def _print_final_verdict(passing: list[str], config: TestConfig) -> None:
+def _print_final_verdict(passing: list[str], config: TestConfig, pop_display: dict[str, str]) -> None:
     no_caution_passes = "no_caution" in passing
     ema20_passes = "ema20_filter" in passing
     range_passes = "range_filter" in passing
+    ema_lbl = pop_display.get("ema20_filter", "ema20_filter")
 
     if no_caution_passes:
         print("  ✅  CAUTION EXCLUSION CONFIRMED — filtering out high-caution bars improves edge.")
@@ -276,12 +306,12 @@ def _print_final_verdict(passing: list[str], config: TestConfig) -> None:
             print("      Both conditions pass individually → both contribute.")
             print("      Carry full no_caution filter to Step 3.")
         elif ema20_passes and not range_passes:
-            print("      ema20_filter passes; range_filter does not.")
-            print("      → EMA-20 reclaim bars are the primary noise source.")
+            print(f"      {ema_lbl} passes; range_filter does not.")
+            print("      → EMA reclaim bars are the primary noise source.")
             print("        Range condition adds modest marginal value.")
-            print("        Consider ema20_filter alone for more trade count in Step 3.")
+            print(f"        Consider {ema_lbl} alone for more trade count in Step 3.")
         elif range_passes and not ema20_passes:
-            print("      range_filter passes; ema20_filter does not.")
+            print(f"      range_filter passes; {ema_lbl} does not.")
             print("      → Wide-range/chop bars are the primary noise source.")
             print("        EMA-20 condition adds modest marginal value.")
             print("        Consider range_filter alone for more trade count in Step 3.")
@@ -299,7 +329,7 @@ def _print_final_verdict(passing: list[str], config: TestConfig) -> None:
 
     # Individual components passing is informative even if no_caution fails
     if ema20_passes:
-        print("      ema20_filter passes individually → try ema20_filter as setup layer.")
+        print(f"      {ema_lbl} passes individually → try {ema_lbl} as setup layer.")
     if range_passes:
         print("      range_filter passes individually → try range_filter as setup layer.")
     if not ema20_passes and not range_passes:
@@ -309,7 +339,7 @@ def _print_final_verdict(passing: list[str], config: TestConfig) -> None:
     print("  Next steps:")
     print("    • Adjust range_atr_mult (try 1.2× or 2.0×)")
     print("    • Adjust ema20_period (try 10 or 30)")
-    print("    • Try a different entry_tf in experiment_config.py")
+    print("    • Try a different entry_tf in config.py")
     print("    • Re-examine whether a setup layer is needed before the trigger layer")
     print()
 
