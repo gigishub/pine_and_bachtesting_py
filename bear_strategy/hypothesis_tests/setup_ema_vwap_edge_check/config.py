@@ -108,6 +108,6 @@ class TestConfig:
     # ------------------------------------------------------------------ #
     results_dir: Path = field(
         default_factory=lambda: Path(
-            "bear_strategy/backtest/hypothesis_tests_raw/results/step2_ema_vwap_check"
+            "bear_strategy/hypothesis_tests/setup_ema_vwap_edge_check/test_results"
         )
     )

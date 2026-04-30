@@ -69,6 +69,6 @@ class TestConfig:
     # ------------------------------------------------------------------ #
     results_dir: Path = field(
         default_factory=lambda: Path(
-            "bear_strategy/backtest/hypothesis_tests_raw/results/step1_regime_check"
+            "bear_strategy/hypothesis_tests/regime_random_entry_check/test_results"
         )
     )

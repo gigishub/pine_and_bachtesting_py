@@ -47,17 +47,17 @@ class TestConfig:
     # ------------------------------------------------------------------ #
     # Timeframe — single-TF, no context_tf needed.
     # ------------------------------------------------------------------ #
-    entry_tf: str = "1h"
+    entry_tf: str = "4h"
 
     # ------------------------------------------------------------------ #
     # Indicator parameters
     # ------------------------------------------------------------------ #
-    ema_period: int = 20        # EMA lookback period
+    ema_period: int = 10       # EMA lookback period
 
     # Minimum consecutive bars price must be above EMA before the cross.
     # Set to 1 to accept any single bar above before crossing down.
     # Increase for stricter "sustained above" requirement.
-    min_bars_above: int = 3
+    min_bars_above: int = 2
 
     # ------------------------------------------------------------------ #
     # Exit parameters
@@ -102,6 +102,6 @@ class TestConfig:
     # ------------------------------------------------------------------ #
     results_dir: Path = field(
         default_factory=lambda: Path(
-            "bear_strategy/backtest/hypothesis_tests_raw/results/step2_ema_cross_check"
+            "bear_strategy/hypothesis_tests/setup_ema_cross_edge_check/test_results"
         )
     )

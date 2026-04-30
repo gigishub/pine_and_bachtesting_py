@@ -19,14 +19,14 @@ class TestConfig:
     # ------------------------------------------------------------------ #
     # Timeframe — single-TF, no context_tf needed.
     # ------------------------------------------------------------------ #
-    entry_tf: str = "4h"
+    entry_tf: str = "1h"
 
     # ------------------------------------------------------------------ #
     # RSI parameters
     # ------------------------------------------------------------------ #
     rsi_period: int = 7
-    rsi_lower: float = 5  # exclude oversold bars (likely to bounce)
-    rsi_upper: float = 30   # exclude bars above midline (bearish zone entry only)
+    rsi_lower: float = 20  # exclude oversold bars (likely to bounce)
+    rsi_upper: float = 40   # exclude bars above midline (bearish zone entry only)
 
     # ------------------------------------------------------------------ #
     # Exit parameters (consistent with other steps)
@@ -73,7 +73,7 @@ class TestConfig:
     # ------------------------------------------------------------------ #
     results_dir: Path = field(
         default_factory=lambda: Path(
-            "bear_strategy/backtest/hypothesis_tests_raw/results/step2_rsi_check"
+            "bear_strategy/hypothesis_tests/setup_rsi_edge_check/test_results"
         )
     )
 

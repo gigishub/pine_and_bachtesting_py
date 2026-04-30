@@ -38,7 +38,7 @@ class TestConfig:
     # ------------------------------------------------------------------ #
     # Timeframe — single-TF, no context_tf needed.
     # ------------------------------------------------------------------ #
-    entry_tf: str = "15m"
+    entry_tf: str = "1h"
 
     # ------------------------------------------------------------------ #
     # RVOL parameters
@@ -95,6 +95,6 @@ class TestConfig:
     # ------------------------------------------------------------------ #
     results_dir: Path = field(
         default_factory=lambda: Path(
-            "bear_strategy/backtest/hypothesis_tests_raw/results/step2_rvol_check"
+            "bear_strategy/hypothesis_tests/setup_rvol_edge_check/test_results"
         )
     )

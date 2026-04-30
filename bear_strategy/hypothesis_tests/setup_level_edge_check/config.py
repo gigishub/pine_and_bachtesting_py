@@ -26,8 +26,8 @@ class TestConfig:
     # To change: set entry_tf and context_tf, then ensure matching parquet
     # files exist under crypto_data/data/{PAIR}/{PAIR}_{tf}_*.parquet.
     # ------------------------------------------------------------------ #
-    entry_tf: str = "1h"
-    context_tf: str = "4h"
+    entry_tf: str = "4h"
+    context_tf: str = "1d"
 
     # ------------------------------------------------------------------ #
     # Exit parameters (same as Step 1)
@@ -75,7 +75,7 @@ class TestConfig:
     # ------------------------------------------------------------------ #
     data_dir: Path = field(default_factory=lambda: Path("crypto_data/data"))
     pairs: list[str] = field(
-        default_factory=lambda: ["BTCUSDT", "ETHUSDT", "SOLUSDT", "BNBUSDT"]
+        default_factory=lambda: ["BTCUSDT", "ETHUSDT", "SOLUSDT", "BNBUSDT","XRPUSDT"]
     )
     start_date: str = "2021-01-01"
     end_date: str = "2025-11-01"
@@ -85,6 +85,6 @@ class TestConfig:
     # ------------------------------------------------------------------ #
     results_dir: Path = field(
         default_factory=lambda: Path(
-            "bear_strategy/backtest/hypothesis_tests_raw/results/step2_setup_check"
+            "bear_strategy/hypothesis_tests/setup_level_edge_check/test_results"
         )
     )

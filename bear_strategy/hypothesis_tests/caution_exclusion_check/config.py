@@ -19,17 +19,17 @@ class TestConfig:
     # Timeframe — all signals computed on entry_tf bars.
     # No context_tf needed; this test is single-timeframe.
     # ------------------------------------------------------------------ #
-    entry_tf: str = "1h"
+    entry_tf: str = "4h"
 
     # ------------------------------------------------------------------ #
     # Caution filter parameters
     # ------------------------------------------------------------------ #
     # EMA period for local trend reference (is_caution condition 1)
-    ema20_period: int = 10
+    ema20_period: int = 20
     # Rolling window for 7-bar swing range (is_caution condition 2)
     range_period: int = 7
     # Multiplier: range > range_atr_mult × ATR is flagged as choppy
-    range_atr_mult: float = 1.2
+    range_atr_mult: float = 1.3
 
     # ------------------------------------------------------------------ #
     # Exit parameters — ATR(7) per spec, same period used for range filter
@@ -77,6 +77,6 @@ class TestConfig:
     # ------------------------------------------------------------------ #
     results_dir: Path = field(
         default_factory=lambda: Path(
-            "bear_strategy/backtest/hypothesis_tests_raw/results/step2b_caution_check"
+            "bear_strategy/hypothesis_tests/caution_exclusion_check/test_results"
         )
     )

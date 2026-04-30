@@ -28,7 +28,7 @@ class TestConfig:
     # To change: set entry_tf, ensure matching parquet files exist under
     # crypto_data/data/{PAIR}/{PAIR}_{entry_tf}_*.parquet.
     # ------------------------------------------------------------------ #
-    entry_tf: str = "1h"
+    entry_tf: str = "15m"
 
     # ------------------------------------------------------------------ #
     # Exit parameters (same as Steps 1 and 2)
@@ -41,7 +41,7 @@ class TestConfig:
     # Volume trigger
     # ------------------------------------------------------------------ #
     volume_window: int = 20      # Rolling window for average volume
-    volume_mult: float = 1.5     # Trigger when volume > volume_mult × rolling_avg
+    volume_mult: float = 1.2     # Trigger when volume > volume_mult × rolling_avg
 
     # ------------------------------------------------------------------ #
     # Regime — fixed to Step 1 winner (ema_below_50)
@@ -67,7 +67,7 @@ class TestConfig:
     # ------------------------------------------------------------------ #
     data_dir: Path = field(default_factory=lambda: Path("crypto_data/data"))
     pairs: list[str] = field(
-        default_factory=lambda: ["BTCUSDT", "ETHUSDT", "SOLUSDT", "BNBUSDT"]
+        default_factory=lambda: ["BTCUSDT", "ETHUSDT", "SOLUSDT", "BNBUSDT","XRPUSDT"]
     )
     start_date: str = "2021-01-01"
     end_date: str = "2025-11-01"
@@ -77,6 +77,6 @@ class TestConfig:
     # ------------------------------------------------------------------ #
     results_dir: Path = field(
         default_factory=lambda: Path(
-            "bear_strategy/backtest/hypothesis_tests_raw/results/step3_trigger_check"
+            "bear_strategy/hypothesis_tests/trigger_volume_confirmation/test_results"
         )
     )
