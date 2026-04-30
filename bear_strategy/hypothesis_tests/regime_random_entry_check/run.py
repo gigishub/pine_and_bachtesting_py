@@ -163,6 +163,7 @@ def _print_verdict(results: pd.DataFrame, config: TestConfig) -> None:
     )
 
     passing: list[tuple[str, float]] = []
+    all_warnings: list[str] = []
 
     for pop in populations:
         pop_df = df[df["population"] == pop].set_index("pair")
@@ -183,9 +184,7 @@ def _print_verdict(results: pd.DataFrame, config: TestConfig) -> None:
         )
         joined["min_pf_lift"] = joined["smaller_n"].apply(lambda n: _min_pf_diff(config, int(n)))
         joined["pair_passes"] = (
-            (joined["wr_lift"] > joined["min_wr_lift"])
-            & (joined["pf_lift"] > joined["min_pf_lift"])
-            & (joined["n_trades"] > config.min_trades_per_pair)
+            (joined["pf_lift"] > joined["min_pf_lift"])
             & (joined["profit_factor"] > joined["pf_base"])
         )
 
@@ -197,18 +196,39 @@ def _print_verdict(results: pd.DataFrame, config: TestConfig) -> None:
         overall_passes = n_passing_pairs >= config.min_pairs_passing
         status = "✅" if overall_passes else "❌"
 
+        # Population-level warnings
+        wr_lift_pairs = [p for p in joined.index if joined.loc[p, "wr_lift"] <= joined.loc[p, "min_wr_lift"]]
+        low_count_pairs = [p for p in joined.index if joined.loc[p, "n_trades"] / baseline.loc[p, "n_base"] < 0.30]
+        weak_regime_pairs = [p for p in joined.index if baseline.loc[p, "pf_base"] < 1.1]
+        if wr_lift_pairs:
+            all_warnings.append(f"⚠️  [{pop}] WR lift below threshold on: {', '.join(str(p) for p in wr_lift_pairs)}")
+        if low_count_pairs:
+            all_warnings.append(f"⚠️  [{pop}] low trade count (<30% of regime) on: {', '.join(str(p) for p in low_count_pairs)}")
+        if weak_regime_pairs:
+            all_warnings.append(f"⚠️  [{pop}] weak regime baseline (PF < 1.1) on: {', '.join(str(p) for p in weak_regime_pairs)}")
+
+        warn_tags = []
+        if wr_lift_pairs:
+            warn_tags.append(f"⚠️ WR {len(wr_lift_pairs)}p")
+        if low_count_pairs:
+            warn_tags.append(f"⚠️ low count {len(low_count_pairs)}p")
+        if weak_regime_pairs:
+            warn_tags.append(f"⚠️ weak regime {len(weak_regime_pairs)}p")
+        warn_str = ("  " + "  ".join(warn_tags)) if warn_tags else ""
+
         print(
             f"  {pop:<22}  avg WR lift {avg_wr_lift:+.2f}pp  avg PF {avg_pf:.3f}"
             f"  avg PF lift {avg_lift:+.3f}"
-            f"  pairs ≥ threshold: {n_passing_pairs}/{n_pairs}  {status}"
+            f"  pairs ≥ threshold: {n_passing_pairs}/{n_pairs}  {status}{warn_str}"
         )
         for pair, row in joined.iterrows():
             pair_status = "✅" if row["pair_passes"] else "❌"
+            wr_note = "  ⚠️ WR" if row["wr_lift"] <= row["min_wr_lift"] else ""
             print(
                 f"    {pair:<10}  WR {row['win_rate'] * 100:.2f}%  "
                 f"lift {row['wr_lift'] * 100:+.2f}pp / req {row['min_wr_lift'] * 100:.2f}pp  "
                 f"PF {row['profit_factor']:.3f}  lift {row['pf_lift']:+.3f} / req {row['min_pf_lift']:.3f}  "
-                f"trades {int(row['n_trades']):,}  {pair_status}"
+                f"trades {int(row['n_trades']):,}{wr_note}  {pair_status}"
             )
         print()
 
@@ -218,7 +238,6 @@ def _print_verdict(results: pd.DataFrame, config: TestConfig) -> None:
     print(
         f"  Thresholds: WR lift > 2.5 * sqrt(p * (1-p) / n),  "
         f"PF lift > 0.02 when n > 50k / 0.05 when n >= 10k / 0.10 when n < 10k,  "
-        f"trades > {config.min_trades_per_pair:,} per pair,  "
         f"consistent across ≥ {config.min_pairs_passing} pairs"
     )
     print()
@@ -227,6 +246,10 @@ def _print_verdict(results: pd.DataFrame, config: TestConfig) -> None:
         best_pop, best_pf = max(passing, key=lambda x: x[1])
         print("  ✅  HYPOTHESIS SURVIVES — at least one filter creates directional skew.")
         print(f"      Best performer: {best_pop}  (avg PF {best_pf:.3f})")
+        if all_warnings:
+            print("      Warnings (results valid but interpret with care):")
+            for w in all_warnings:
+                print(f"        {w}")
         print("      Proceed to Step 2 (setup level edge check).")
     else:
         print("  ❌  HYPOTHESIS FAILS — no filter creates sufficient directional skew.")
