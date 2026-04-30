@@ -1,8 +1,12 @@
-"""Configuration for the trigger volume confirmation test (Step 3).
+"""Configuration for Step 2b — Caution Exclusion Filter.
 
-Regime filter: ema_below_50 (Step 1 winner).
-Step 2 falsified setup-level proximity — this test operates directly on
-the regime population with no setup gate.
+Hypothesis: Within the EMA-50 bear regime, excluding bars where price
+reclaims the 1H EMA(20) OR where the 7-bar swing exceeds 1.5× ATR should
+improve short-entry quality by removing noise/reversal bars.
+
+To sweep timeframes or exit sizing across all steps, edit
+``bear_strategy/hypothesis_tests/experiment_config.py`` and use
+``TestConfig.from_experiment(ExperimentConfig())``.
 """
 
 from __future__ import annotations
@@ -18,36 +22,31 @@ if TYPE_CHECKING:
 @dataclass
 class TestConfig:
     # ------------------------------------------------------------------ #
-    # Timeframe
-    # entry_tf = candle resolution for entries, stops, targets, and the
-    # volume rolling average. No higher-TF alignment needed for this test.
-    #
-    # Timeframe choice guide for bear shorts:
-    #   "15m" → intraday scalp shorts (holds 15 min – 4 h)
-    #   "1h"  → swing shorts (holds 1 – 48 h)  ← default
-    #   "4h"  → position shorts (holds days to weeks)
-    #
-    # To change: set entry_tf, ensure matching parquet files exist under
-    # crypto_data/data/{PAIR}/{PAIR}_{entry_tf}_*.parquet.
+    # Timeframe — all signals computed on entry_tf bars.
+    # No context_tf needed; this test is single-timeframe.
     # ------------------------------------------------------------------ #
-    entry_tf: str = "15m"
+    entry_tf: str = "1h"
 
     # ------------------------------------------------------------------ #
-    # Exit parameters (same as Steps 1 and 2)
+    # Caution filter parameters
+    # ------------------------------------------------------------------ #
+    # EMA period for local trend reference (is_caution condition 1)
+    ema20_period: int = 20
+    # Rolling window for 7-bar swing range (is_caution condition 2)
+    range_period: int = 7
+    # Multiplier: range > range_atr_mult × ATR is flagged as choppy
+    range_atr_mult: float = 1.5
+
+    # ------------------------------------------------------------------ #
+    # Exit parameters — ATR(7) per spec, same period used for range filter
     # ------------------------------------------------------------------ #
     stop_atr_mult: float = 2.0
     target_atr_mult: float = 3.0
-    atr_period: int = 14  # ATR period on entry_tf bars
-
-    # ------------------------------------------------------------------ #
-    # Volume trigger
-    # ------------------------------------------------------------------ #
-    volume_window: int = 20      # Rolling window for average volume
-    volume_mult: float = 1.5     # Trigger when volume > volume_mult × rolling_avg
+    atr_period: int = 7  # ATR(entry_tf, 7) per spec; matches ExperimentConfig default
 
     # ------------------------------------------------------------------ #
     # Regime — fixed to Step 1 winner (ema_below_50)
-    # See bear_strategy/backtest/hypothesis_tests_raw/results/step1_regime_check/step1_results.csv
+    # See bear_strategy/backtest/hypothesis_tests_raw/results/step1_regime_check/
     # ------------------------------------------------------------------ #
     regime_col: str = "ema_below_50_regime"
     ema_slope_period: int = 200
@@ -55,21 +54,26 @@ class TestConfig:
     ema_below_periods: list[int] = field(default_factory=lambda: [50])
 
     # ------------------------------------------------------------------ #
-    # Falsification thresholds (identical to Steps 1 and 2)
+    # Falsification thresholds — ≥ 4 of 5 pairs must pass
     # ------------------------------------------------------------------ #
     significance_zscore: float = 2.5
     min_pf_diff_high_n: float = 0.02   # n > 50 000
     min_pf_diff_mid_n: float = 0.05    # 10 000 ≤ n ≤ 50 000
     min_pf_diff_low_n: float = 0.10    # n < 10 000
     min_trades_per_pair: int = 1000
-    min_pairs_passing: int = 3
+    min_pairs_passing: int = 4
+
+    # no_caution must keep ≥ this fraction of eligible regime bars.
+    # Unlike BB (6–8%), caution bars are the minority in a clean bear trend
+    # so this should pass easily. Hard-fail if it doesn't.
+    min_coverage_ratio: float = 0.40
 
     # ------------------------------------------------------------------ #
-    # Data
+    # Data — 5 pairs (same as Step 2a)
     # ------------------------------------------------------------------ #
     data_dir: Path = field(default_factory=lambda: Path("crypto_data/data"))
     pairs: list[str] = field(
-        default_factory=lambda: ["BTCUSDT", "ETHUSDT", "SOLUSDT", "BNBUSDT"]
+        default_factory=lambda: ["BTCUSDT", "ETHUSDT", "SOLUSDT", "BNBUSDT", "XRPUSDT"]
     )
     start_date: str = "2021-01-01"
     end_date: str = "2025-11-01"
@@ -79,7 +83,7 @@ class TestConfig:
     # ------------------------------------------------------------------ #
     results_dir: Path = field(
         default_factory=lambda: Path(
-            "bear_strategy/backtest/hypothesis_tests_raw/results/step3_trigger_check"
+            "bear_strategy/backtest/hypothesis_tests_raw/results/step2b_caution_check"
         )
     )
 
@@ -88,7 +92,11 @@ class TestConfig:
     # ------------------------------------------------------------------ #
     @classmethod
     def from_experiment(cls, exp: "ExperimentConfig") -> "TestConfig":
-        """Create a TestConfig using shared TF and exit settings."""
+        """Create a TestConfig using shared TF and exit settings.
+
+        atr_period defaults to 7 in both TestConfig and ExperimentConfig,
+        so no override is needed for this step's spec.
+        """
         return cls(
             entry_tf=exp.entry_tf,
             stop_atr_mult=exp.stop_atr_mult,

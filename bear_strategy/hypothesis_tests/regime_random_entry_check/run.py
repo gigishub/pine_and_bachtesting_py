@@ -23,6 +23,7 @@ import pandas as pd
 
 from bear_strategy.hypothesis_tests.regime_random_entry_check.config import TestConfig
 from bear_strategy.hypothesis_tests.regime_random_entry_check.runner import run_test
+from bear_strategy.hypothesis_tests.experiment_config import ExperimentConfig
 
 logging.basicConfig(
     level=logging.INFO,
@@ -33,15 +34,16 @@ logger = logging.getLogger(__name__)
 
 
 def main() -> None:
-    config = TestConfig()
+    config = TestConfig.from_experiment(ExperimentConfig())
 
     logger.info("=" * 70)
     logger.info("Bear Strategy — Step 1: Regime Random Entry Check")
+    logger.info("Entry TF     : %s  |  Regime TF: 1d (daily, fixed)", config.entry_tf)
     logger.info("Pairs        : %s", config.pairs)
     logger.info("EMA slope    : EMA %dd slope down", config.ema_slope_period)
     logger.info("EMA below    : close < EMA %s", config.ema_below_periods)
     logger.info("Slope lookback: %d bar(s)", config.ema_slope_lookback)
-    logger.info("Stop  : %.1f× ATR  |  Target: %.1f× ATR", config.stop_atr_mult, config.target_atr_mult)
+    logger.info("Stop  : %.1f× ATR_%s  |  Target: %.1f× ATR_%s", config.stop_atr_mult, config.entry_tf, config.target_atr_mult, config.entry_tf)
     logger.info("=" * 70)
 
     results = run_test(config)
@@ -89,7 +91,8 @@ def _print_summary(results: pd.DataFrame, config: TestConfig) -> None:
 
 def _save_results(results: pd.DataFrame, config: TestConfig) -> None:
     config.results_dir.mkdir(parents=True, exist_ok=True)
-    out = config.results_dir / "step1_results.csv"
+    filename = f"step1_results_entry{config.entry_tf}.csv"
+    out = config.results_dir / filename
     results.reset_index().to_csv(out, index=False)
     logger.info("Results saved → %s", out)
 

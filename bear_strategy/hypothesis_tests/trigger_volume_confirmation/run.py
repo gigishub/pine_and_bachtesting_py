@@ -42,6 +42,7 @@ import pandas as pd
 
 from bear_strategy.hypothesis_tests.trigger_volume_confirmation.config import TestConfig
 from bear_strategy.hypothesis_tests.trigger_volume_confirmation.runner import run_test
+from bear_strategy.hypothesis_tests.experiment_config import ExperimentConfig
 
 logging.basicConfig(
     level=logging.INFO,
@@ -52,7 +53,7 @@ logger = logging.getLogger(__name__)
 
 
 def main() -> None:
-    config = TestConfig()
+    config = TestConfig.from_experiment(ExperimentConfig())
 
     logger.info("=" * 70)
     logger.info("Bear Strategy — Step 3: Trigger Volume Confirmation")

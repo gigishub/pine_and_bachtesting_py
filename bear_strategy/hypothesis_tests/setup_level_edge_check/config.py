@@ -7,6 +7,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from bear_strategy.hypothesis_tests.experiment_config import ExperimentConfig
 
 
 @dataclass
@@ -51,7 +55,7 @@ class TestConfig:
 
     # ------------------------------------------------------------------ #
     # Regime — fixed to Step 1 winner (ema_below_50)
-    # See bear_strategy/backtest/results/backtesting_py/step1_regime_check/step1_results.csv
+    # See bear_strategy/backtest/hypothesis_tests_raw/results/step1_regime_check/step1_results.csv
     # ------------------------------------------------------------------ #
     regime_col: str = "ema_below_50_regime"
     ema_slope_period: int = 200
@@ -86,3 +90,17 @@ class TestConfig:
             "bear_strategy/backtest/hypothesis_tests_raw/results/step2_setup_check"
         )
     )
+
+    # ------------------------------------------------------------------ #
+    # Factory: build from shared ExperimentConfig
+    # ------------------------------------------------------------------ #
+    @classmethod
+    def from_experiment(cls, exp: "ExperimentConfig") -> "TestConfig":
+        """Create a TestConfig using shared TF and exit settings."""
+        return cls(
+            entry_tf=exp.entry_tf,
+            context_tf=exp.context_tf,
+            stop_atr_mult=exp.stop_atr_mult,
+            target_atr_mult=exp.target_atr_mult,
+            atr_period=exp.atr_period,
+        )

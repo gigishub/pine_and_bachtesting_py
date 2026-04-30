@@ -1,0 +1,48 @@
+//@version=6
+indicator("ROC Exhaustion Zones", shorttitle="ROC Exhaustion", overlay=true)
+
+// --- Inputs ---
+int   rocLen      = input.int(10, "ROC Lookback")
+int   driftBars   = input.int(3, "Min Bars for Trend")
+float accelThresh = input.float(0.5, "Trend Acceleration %")
+
+// Toggle Switches
+bool showPostBull = input.bool(true, "Show Post-Bull Exhaustion (Red)", group="Visibility")
+bool showPostBear = input.bool(true, "Show Post-Bear Exhaustion (Green)", group="Visibility")
+
+// --- Calculations ---
+float roc = ta.roc(close, rocLen)
+
+// 1. Define active trend states (The "Before" states)
+bool isBullTrend = ta.rising(roc, driftBars) and roc > accelThresh
+bool isBearTrend = ta.falling(roc, driftBars) and roc < -accelThresh
+
+// 2. Define the Exhaustion (The "After" states)
+// We look for the moment the trend condition fails after being active
+var bool bullExhaustionActive = false
+var bool bearExhaustionActive = false
+
+if isBullTrend
+    bullExhaustionActive := false
+else if isBullTrend[1] or bullExhaustionActive[1]
+    bullExhaustionActive := true
+
+if isBearTrend
+    bearExhaustionActive := false
+else if isBearTrend[1] or bearExhaustionActive[1]
+    bearExhaustionActive := true
+
+// Reset logic: If a new opposite trend starts, kill the current exhaustion
+if isBearTrend
+    bullExhaustionActive := false
+if isBullTrend
+    bearExhaustionActive := false
+
+// --- Visualization ---
+// Red Zone: Market just finished a Bull run (Potential Overbought/Rest)
+color redZone = (showPostBull and bullExhaustionActive) ? color.new(color.red, 80) : na
+bgcolor(redZone)
+
+// Green Zone: Market just finished a Bear run (Potential Oversold/Rest)
+color greenZone = (showPostBear and bearExhaustionActive) ? color.new(color.green, 80) : na
+bgcolor(greenZone)

@@ -16,7 +16,7 @@ Timeframe configuration (set in config.py):
     Smaller entry_tf → more trades, more noise, tighter stops needed.
 
 Regime filter: ema_below_50 (Step 1 winner).
-See: bear_strategy/backtest/results/backtesting_py/step1_regime_check/step1_results.csv
+See: bear_strategy/backtest/hypothesis_tests_raw/results/step1_regime_check/step1_results.csv
 
 Result file is named: step2_results_entry{entry_tf}_context{context_tf}.csv
 
@@ -42,6 +42,7 @@ import pandas as pd
 
 from bear_strategy.hypothesis_tests.setup_level_edge_check.config import TestConfig
 from bear_strategy.hypothesis_tests.setup_level_edge_check.runner import run_test
+from bear_strategy.hypothesis_tests.experiment_config import ExperimentConfig
 
 logging.basicConfig(
     level=logging.INFO,
@@ -52,7 +53,7 @@ logger = logging.getLogger(__name__)
 
 
 def main() -> None:
-    config = TestConfig()
+    config = TestConfig.from_experiment(ExperimentConfig())
 
     logger.info("=" * 70)
     logger.info("Bear Strategy — Step 2: Setup Level Edge Check")
