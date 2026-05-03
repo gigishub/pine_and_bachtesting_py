@@ -1,16 +1,12 @@
-"""Vectorised outcome engine for the KDE Price Cluster Edge Check.
+"""Vectorized outcome engine for Setup 2 Trigger: KDE Upper (4h) + 15m signals.
 
-For every bar in a population, enters a short at the bar's close and
-scans forward until stop or target is resolved.
+Entry TF  : 15m
+KDE TF    : 4h  (shifted 1 completed 4h bar, forward-filled to 15m)
+Reference : 1d  (VPVR HVN shifted 1 day, forward-filled to 15m)
+                (daily VWAP computed on 15m bars, resets at midnight)
+RVOL      : 15m rolling window (default 96 bars = 24h)
 
-Stop   = entry + stop_mult × ATR(entry_tf, atr_period)
-Target = entry − target_mult × ATR(entry_tf, atr_period)
-
-Populations:
-    regime_only     — eligible regime baseline (KDE window fully warmed)
-    kde_upper       — regime + open > kde_peak  (setup_active_upper)
-    kde_lower       — regime + close < kde_peak (any duration)
-    kde_lower_fresh — regime + close < kde_peak AND counter ≤ lower_duration
+Baseline  : regime AND kde_upper — all populations are subsets of this.
 """
 
 from __future__ import annotations
@@ -21,18 +17,24 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from bear_strategy.hypothesis_tests.setup_kde_edge_check.config import TestConfig
-from bear_strategy.hypothesis_tests.setup_kde_edge_check.entries import build_population_masks, _compute_kde_signals
-from bear_strategy.strategy.parameters import Parameters
+from bear_strategy.hypothesis_tests.setup_kde_edge_check.entries import _compute_kde_signals
+from bear_strategy.hypothesis_tests.setup_2_trigger_check.config import TestConfig
+from bear_strategy.hypothesis_tests.setup_2_trigger_check.entries import build_population_masks
+from bear_strategy.strategy.indicators.setup.vpvr_hvn import compute_vpvr_hvn
 from bear_strategy.strategy.signals import compute_regime_signals
+from bear_strategy.strategy.parameters import Parameters
 
 logger = logging.getLogger(__name__)
 
 _POPULATION_ORDER = [
-    "regime_only",
-    "kde_upper",
-    "kde_lower",
-    "kde_lower_fresh",
+    "kde_upper_baseline",
+    "vwap_only",
+    "vpvr_only",
+    "near_setup",
+    "rvol_only",
+    "vwap_and_rvol",
+    "vpvr_and_rvol",
+    "near_and_rvol",
 ]
 
 
@@ -42,12 +44,7 @@ _POPULATION_ORDER = [
 
 
 def run_test(config: TestConfig) -> pd.DataFrame:
-    """Run the KDE edge check across all configured pairs.
-
-    Returns:
-        DataFrame indexed by (pair, population) with columns:
-        win_rate, profit_factor, avg_duration, n_trades.
-    """
+    """Run the setup 2 trigger check across all configured pairs."""
     params = Parameters(
         ema_slope_period=config.ema_slope_period,
         ema_slope_lookback=config.ema_slope_lookback,
@@ -56,11 +53,11 @@ def run_test(config: TestConfig) -> pd.DataFrame:
 
     records: list[dict] = []
     for pair in config.pairs:
-        logger.info("Processing %s (KDE window=%d) …", pair, config.window)
+        logger.info("Processing %s", pair)
         try:
             records.extend(_process_pair(pair, config, params))
         except FileNotFoundError as exc:
-            logger.warning("Skipping %s — data not found: %s", pair, exc)
+            logger.warning("Skipping %s -- data not found: %s", pair, exc)
         except Exception as exc:
             logger.error("Error processing %s: %s", pair, exc, exc_info=True)
             raise
@@ -83,46 +80,45 @@ def _process_pair(
     config: TestConfig,
     params: Parameters,
 ) -> list[dict]:
-    # Load entry TF (1h), KDE TF (4h), and daily separately
     df_entry = _load_parquet(config.data_dir, pair, config.entry_tf, config.start_date, config.end_date)
-    df_kde = _load_parquet(config.data_dir, pair, config.kde_tf, config.start_date, config.end_date)
-    df_daily = _load_parquet(config.data_dir, pair, "1d", config.start_date, config.end_date)
+    df_4h = _load_parquet(config.data_dir, pair, config.kde_tf, config.start_date, config.end_date)
+    df_daily = _load_parquet(config.data_dir, pair, config.context_tf, config.start_date, config.end_date)
 
     df_entry = _standardise_ohlcv(df_entry)
-    df_kde = _standardise_ohlcv(df_kde)
+    df_4h = _standardise_ohlcv(df_4h)
     df_daily = _standardise_ohlcv(df_daily)
 
-    # Compute regime on entry TF (1h).
-    # Regime uses daily EMA/close (uses closed bars, no lookahead).
+    # Regime computed on 15m bars with 1d reference
     regime = compute_regime_signals(df_entry, df_daily, params)
     df_entry = df_entry.copy()
     for col, series in regime.items():
         df_entry[col] = series.values
 
+    # ATR on 15m bars — used for stop/target sizing and proximity threshold
     df_entry["atr"] = _atr(df_entry, config.atr_period).values
 
-    # Compute KDE on KDE TF (4h).
-    # KDE uses historical price data (window lookback), no lookahead there.
-    # We shift(1) the result: KDE at bar i moves to bar i+1.
-    # This ensures entry bars only use KDE from previously-closed 4h bars.
-    # Example: 1h bar at 1:00 gets KDE from 4h bar closed at 0:00 (not current forming bar).
+    # VPVR HVN from 1d bars: shift 1 day then align to 15m
+    vpvr_1d = compute_vpvr_hvn(df_daily, config.vpvr_window, config.vpvr_n_bins)
+    aligned_vpvr = _align_to_entry_tf(df_entry, vpvr_1d.shift(1).rename("vpvr_hvn_1d"))
+    df_entry["vpvr_hvn_1d"] = aligned_vpvr.values
+
+    # KDE signals on 4h bars: compute, shift 1 bar, align to 15m
     kde_result = _compute_kde_signals(
-        close=df_kde["Close"].to_numpy(dtype=float),
-        open_=df_kde["Open"].to_numpy(dtype=float),
-        window=config.window,
-        bandwidth_mult=config.bandwidth_mult,
+        close=df_4h["Close"].to_numpy(dtype=float),
+        open_=df_4h["Open"].to_numpy(dtype=float),
+        window=config.kde_window,
+        bandwidth_mult=config.kde_bandwidth_mult,
         kde_n_points=config.kde_n_points,
-        value_area_pct=config.value_area_pct,
-        lower_duration=config.lower_duration,
-        index=df_kde.index,
+        value_area_pct=config.kde_value_area_pct,
+        lower_duration=config.kde_lower_duration,
+        index=df_4h.index,
     )
+    kde_upper_4h = pd.Series(
+        kde_result["setup_active_upper"], index=df_4h.index, name="kde_upper"
+    ).shift(1).to_frame()
 
-    kde_df = pd.DataFrame(kde_result, index=df_kde.index).shift(1)
-
-    # Align shifted KDE from 4h to 1h using backward merge_asof (no future data pulled).
-    aligned = _align_to_entry_tf(df_entry, kde_df)
-    for col in kde_df.columns:
-        df_entry[col] = aligned[col].values
+    aligned_kde = _align_to_entry_tf(df_entry, kde_upper_4h)
+    df_entry["kde_upper"] = aligned_kde["kde_upper"].values
 
     masks = build_population_masks(df_entry, config)
 
@@ -132,7 +128,7 @@ def _process_pair(
         result = _compute_outcomes(df_entry, mask, config)
         records.append({"pair": pair, "population": pop_name, **result})
         logger.debug(
-            "%s | %-18s | trades=%d  win=%.1f%%  PF=%.2f  dur=%.1f bars",
+            "%s | %-22s | trades=%d  win=%.1f%%  PF=%.2f  dur=%.1f bars",
             pair,
             pop_name,
             result["n_trades"],
@@ -149,16 +145,19 @@ def _process_pair(
 # ---------------------------------------------------------------------------
 
 
-def _align_to_entry_tf(df_entry: pd.DataFrame, df_htf: pd.DataFrame) -> pd.DataFrame:
-    """Align higher-TF signals to entry TF using merge_asof backward fill.
-    
-    direction="backward" ensures each entry-TF bar gets the most recent
-    higher-TF signal value at or before that timestamp.
-    No future data is pulled forward — lookahead bias avoided.
-    """
+def _align_to_entry_tf(
+    df_entry: pd.DataFrame,
+    series_or_df,
+) -> pd.DataFrame:
+    """Forward-fill a higher-TF signal onto the entry-TF grid via merge_asof."""
+    if isinstance(series_or_df, pd.Series):
+        right = series_or_df.to_frame().sort_index()
+    else:
+        right = series_or_df.sort_index()
+
     return pd.merge_asof(
         df_entry[[]].sort_index(),
-        df_htf.sort_index(),
+        right,
         left_index=True,
         right_index=True,
         direction="backward",
@@ -175,12 +174,7 @@ def _compute_outcomes(
     entry_mask: pd.Series,
     config: TestConfig,
 ) -> dict:
-    """Forward-scan every entry bar in the mask.
-
-    Enters a short at close.  Scans forward until high ≥ stop (loss) or
-    low ≤ target (win).  Ties on the same bar = loss (conservative).
-    Unresolved trades are excluded.
-    """
+    """Vectorized forward-scan: short at entry bar close, exit at ATR stop/target."""
     closes = df["Close"].to_numpy(dtype=float)
     highs = df["High"].to_numpy(dtype=float)
     lows = df["Low"].to_numpy(dtype=float)
@@ -199,22 +193,16 @@ def _compute_outcomes(
         stop = entry_price + config.stop_atr_mult * atrs[idx]
         target = entry_price - config.target_atr_mult * atrs[idx]
 
-        resolved = False
         for fwd in range(1, len(closes) - idx):
             bar = idx + fwd
             if highs[bar] >= stop:
                 losses.append(config.stop_atr_mult)
                 durations.append(fwd)
-                resolved = True
                 break
             if lows[bar] <= target:
                 wins.append(config.target_atr_mult)
                 durations.append(fwd)
-                resolved = True
                 break
-
-        if not resolved:
-            continue
 
     n_wins = len(wins)
     n_losses = len(losses)
@@ -237,7 +225,7 @@ def _compute_outcomes(
 
 
 # ---------------------------------------------------------------------------
-# Data loading helpers
+# Data helpers
 # ---------------------------------------------------------------------------
 
 
@@ -258,11 +246,10 @@ def _load_parquet(
 
     candidates = sorted(symbol_dir.glob(f"{symbol}_{timeframe}_*.parquet"))
     if not candidates:
-        raise FileNotFoundError(f"No parquet file for {symbol}/{timeframe} in {symbol_dir}.")
-
-    path = candidates[0]
-    logger.debug("Exact file not found; using %s", path.name)
-    return pd.read_parquet(path)
+        raise FileNotFoundError(
+            f"No parquet file for {symbol}/{timeframe} in {symbol_dir}."
+        )
+    return pd.read_parquet(candidates[0])
 
 
 def _standardise_ohlcv(df: pd.DataFrame) -> pd.DataFrame:

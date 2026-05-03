@@ -44,7 +44,7 @@ class TestConfig:
     # RVOL parameters
     # ------------------------------------------------------------------ #
     vol_ma_len: int = 20            # rolling window for average volume
-    rvol_threshold: float = 1.2    # spike when volume / avg >= this value
+    rvol_threshold: float = 0.8   # spike when volume / avg >= this value
 
     # How many consecutive bars must satisfy the threshold.
     # Set to 1 for a single-bar spike (higher TF).

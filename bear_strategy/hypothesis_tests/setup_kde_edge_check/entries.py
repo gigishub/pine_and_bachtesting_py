@@ -87,16 +87,34 @@ def build_population_masks(
     regime = df[config.regime_col].astype(bool)
     atr_ready = df["atr"].notna()
 
-    kde_signals = _compute_kde_signals(
-        close=df["Close"].to_numpy(dtype=float),
-        open_=df["Open"].to_numpy(dtype=float),
-        window=config.window,
-        bandwidth_mult=config.bandwidth_mult,
-        kde_n_points=config.kde_n_points,
-        value_area_pct=config.value_area_pct,
-        lower_duration=config.lower_duration,
-        index=df.index,
+    # Check if KDE signals are already attached (from aligned higher TF)
+    kde_signals_precomputed = (
+        "setup_active_upper" in df.columns
+        and "is_below_peak" in df.columns
+        and "setup_active_lower" in df.columns
+        and "kde_peak" in df.columns
     )
+
+    if kde_signals_precomputed:
+        # Use pre-computed signals (from aligned 4h KDE on 1h bars)
+        kde_signals = {
+            "kde_peak": df["kde_peak"],
+            "setup_active_upper": df["setup_active_upper"],
+            "is_below_peak": df["is_below_peak"],
+            "setup_active_lower": df["setup_active_lower"],
+        }
+    else:
+        # Compute KDE on entry-TF data (for testing entry_tf alone)
+        kde_signals = _compute_kde_signals(
+            close=df["Close"].to_numpy(dtype=float),
+            open_=df["Open"].to_numpy(dtype=float),
+            window=config.window,
+            bandwidth_mult=config.bandwidth_mult,
+            kde_n_points=config.kde_n_points,
+            value_area_pct=config.value_area_pct,
+            lower_duration=config.lower_duration,
+            index=df.index,
+        )
 
     kde_ready = kde_signals["kde_peak"].notna()
     eligible = regime & atr_ready & kde_ready

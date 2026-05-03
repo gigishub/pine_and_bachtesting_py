@@ -1,16 +1,16 @@
-"""Vectorised outcome engine for the KDE Price Cluster Edge Check.
+"""Vectorized outcome engine for the KDE + Level Proximity Combined Check.
 
-For every bar in a population, enters a short at the bar's close and
-scans forward until stop or target is resolved.
+Entry TF  : 1h
+KDE TF    : 4h  (KDE gate computed on 4h bars, shifted 1 bar, aligned to 1h)
+Reference : 1d  (VPVR HVN computed from trailing 1d bars, shifted 1 bar)
+                (daily VWAP computed directly on 1h bars, reset at midnight)
 
-Stop   = entry + stop_mult × ATR(entry_tf, atr_period)
-Target = entry − target_mult × ATR(entry_tf, atr_period)
-
-Populations:
-    regime_only     — eligible regime baseline (KDE window fully warmed)
-    kde_upper       — regime + open > kde_peak  (setup_active_upper)
-    kde_lower       — regime + close < kde_peak (any duration)
-    kde_lower_fresh — regime + close < kde_peak AND counter ≤ lower_duration
+Look-ahead prevention:
+    4h KDE signals are computed on 4h bars, shifted by 1 completed 4h bar,
+    then forward-filled onto the 1h grid via merge_asof.
+    VPVR HVN is computed on 1d bars, shifted by 1 daily bar, then
+    forward-filled to 1h.
+    Daily VWAP accumulates within each calendar day -- fully causal.
 """
 
 from __future__ import annotations
@@ -21,18 +21,34 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from bear_strategy.hypothesis_tests.setup_kde_edge_check.config import TestConfig
-from bear_strategy.hypothesis_tests.setup_kde_edge_check.entries import build_population_masks, _compute_kde_signals
-from bear_strategy.strategy.parameters import Parameters
+from bear_strategy.hypothesis_tests.setup_kde_edge_check.entries import _compute_kde_signals
+from bear_strategy.hypothesis_tests.setup_kde_level_combined_check.config import TestConfig
+from bear_strategy.hypothesis_tests.setup_kde_level_combined_check.entries import (
+    build_population_masks,
+)
+from bear_strategy.strategy.indicators.setup.vpvr_hvn import compute_vpvr_hvn
 from bear_strategy.strategy.signals import compute_regime_signals
+from bear_strategy.strategy.parameters import Parameters
 
 logger = logging.getLogger(__name__)
 
 _POPULATION_ORDER = [
     "regime_only",
+    "kde_gate",
     "kde_upper",
-    "kde_lower",
     "kde_lower_fresh",
+    "vwap_only",
+    "vpvr_only",
+    "near_setup",
+    "kde_gate_and_vwap",
+    "kde_gate_and_vpvr",
+    "kde_gate_and_near",
+    "kde_upper_and_vwap",
+    "kde_upper_and_vpvr",
+    "kde_upper_and_near",
+    "kde_lower_and_vwap",
+    "kde_lower_and_vpvr",
+    "kde_lower_and_near",
 ]
 
 
@@ -42,11 +58,11 @@ _POPULATION_ORDER = [
 
 
 def run_test(config: TestConfig) -> pd.DataFrame:
-    """Run the KDE edge check across all configured pairs.
+    """Run the combined KDE + level check across all configured pairs.
 
     Returns:
-        DataFrame indexed by (pair, population) with columns:
-        win_rate, profit_factor, avg_duration, n_trades.
+        DataFrame with columns (pair, population, win_rate, profit_factor,
+        avg_duration, n_trades), indexed by (pair, population).
     """
     params = Parameters(
         ema_slope_period=config.ema_slope_period,
@@ -56,11 +72,11 @@ def run_test(config: TestConfig) -> pd.DataFrame:
 
     records: list[dict] = []
     for pair in config.pairs:
-        logger.info("Processing %s (KDE window=%d) …", pair, config.window)
+        logger.info("Processing %s", pair)
         try:
             records.extend(_process_pair(pair, config, params))
         except FileNotFoundError as exc:
-            logger.warning("Skipping %s — data not found: %s", pair, exc)
+            logger.warning("Skipping %s -- data not found: %s", pair, exc)
         except Exception as exc:
             logger.error("Error processing %s: %s", pair, exc, exc_info=True)
             raise
@@ -83,53 +99,59 @@ def _process_pair(
     config: TestConfig,
     params: Parameters,
 ) -> list[dict]:
-    # Load entry TF (1h), KDE TF (4h), and daily separately
-    df_entry = _load_parquet(config.data_dir, pair, config.entry_tf, config.start_date, config.end_date)
-    df_kde = _load_parquet(config.data_dir, pair, config.kde_tf, config.start_date, config.end_date)
-    df_daily = _load_parquet(config.data_dir, pair, "1d", config.start_date, config.end_date)
+    df_1h = _load_parquet(config.data_dir, pair, config.entry_tf, config.start_date, config.end_date)
+    df_4h = _load_parquet(config.data_dir, pair, config.kde_tf, config.start_date, config.end_date)
+    df_daily = _load_parquet(config.data_dir, pair, config.context_tf, config.start_date, config.end_date)
 
-    df_entry = _standardise_ohlcv(df_entry)
-    df_kde = _standardise_ohlcv(df_kde)
+    df_1h = _standardise_ohlcv(df_1h)
+    df_4h = _standardise_ohlcv(df_4h)
     df_daily = _standardise_ohlcv(df_daily)
 
-    # Compute regime on entry TF (1h).
-    # Regime uses daily EMA/close (uses closed bars, no lookahead).
-    regime = compute_regime_signals(df_entry, df_daily, params)
-    df_entry = df_entry.copy()
+    # Regime signals on 1h (uses 1d daily for EMA slope reference)
+    regime = compute_regime_signals(df_1h, df_daily, params)
+    df_1h = df_1h.copy()
     for col, series in regime.items():
-        df_entry[col] = series.values
+        df_1h[col] = series.values
 
-    df_entry["atr"] = _atr(df_entry, config.atr_period).values
+    # 1h ATR for stop/target sizing and proximity threshold
+    df_1h["atr"] = _atr(df_1h, config.atr_period).values
 
-    # Compute KDE on KDE TF (4h).
-    # KDE uses historical price data (window lookback), no lookahead there.
-    # We shift(1) the result: KDE at bar i moves to bar i+1.
-    # This ensures entry bars only use KDE from previously-closed 4h bars.
-    # Example: 1h bar at 1:00 gets KDE from 4h bar closed at 0:00 (not current forming bar).
+    # VPVR HVN from 1d bars: shift by 1 daily bar then align to 1h
+    vpvr_1d = compute_vpvr_hvn(df_daily, config.vpvr_window, config.vpvr_n_bins)
+    aligned_vpvr = _align_higher_to_1h(df_1h, vpvr_1d.shift(1).rename("vpvr_hvn_1d"))
+    df_1h["vpvr_hvn_1d"] = aligned_vpvr.values
+
+    # KDE signals on 4h bars: compute, shift by 1 4h bar, align to 1h
     kde_result = _compute_kde_signals(
-        close=df_kde["Close"].to_numpy(dtype=float),
-        open_=df_kde["Open"].to_numpy(dtype=float),
-        window=config.window,
-        bandwidth_mult=config.bandwidth_mult,
+        close=df_4h["Close"].to_numpy(dtype=float),
+        open_=df_4h["Open"].to_numpy(dtype=float),
+        window=config.kde_window,
+        bandwidth_mult=config.kde_bandwidth_mult,
         kde_n_points=config.kde_n_points,
-        value_area_pct=config.value_area_pct,
-        lower_duration=config.lower_duration,
-        index=df_kde.index,
+        value_area_pct=config.kde_value_area_pct,
+        lower_duration=config.kde_lower_duration,
+        index=df_4h.index,
     )
+    df_4h_kde = pd.DataFrame(
+        {
+            "kde_upper": kde_result["setup_active_upper"],
+            "kde_lower_fresh": kde_result["setup_active_lower"],
+        },
+        index=df_4h.index,
+    )
+    # Shift by 1 completed 4h bar before aligning to prevent lookahead
+    df_4h_kde_shifted = df_4h_kde.shift(1)
 
-    kde_df = pd.DataFrame(kde_result, index=df_kde.index).shift(1)
+    aligned_kde = _align_higher_to_1h(df_1h, df_4h_kde_shifted)
+    df_1h["kde_upper"] = aligned_kde["kde_upper"].values
+    df_1h["kde_lower_fresh"] = aligned_kde["kde_lower_fresh"].values
 
-    # Align shifted KDE from 4h to 1h using backward merge_asof (no future data pulled).
-    aligned = _align_to_entry_tf(df_entry, kde_df)
-    for col in kde_df.columns:
-        df_entry[col] = aligned[col].values
-
-    masks = build_population_masks(df_entry, config)
+    masks = build_population_masks(df_1h, config)
 
     records = []
     for pop_name in _POPULATION_ORDER:
         mask = masks[pop_name]
-        result = _compute_outcomes(df_entry, mask, config)
+        result = _compute_outcomes(df_1h, mask, config)
         records.append({"pair": pair, "population": pop_name, **result})
         logger.debug(
             "%s | %-18s | trades=%d  win=%.1f%%  PF=%.2f  dur=%.1f bars",
@@ -145,24 +167,37 @@ def _process_pair(
 
 
 # ---------------------------------------------------------------------------
-# Higher-TF -> entry-TF alignment
+# Higher-TF -> 1h alignment
 # ---------------------------------------------------------------------------
 
 
-def _align_to_entry_tf(df_entry: pd.DataFrame, df_htf: pd.DataFrame) -> pd.DataFrame:
-    """Align higher-TF signals to entry TF using merge_asof backward fill.
-    
-    direction="backward" ensures each entry-TF bar gets the most recent
-    higher-TF signal value at or before that timestamp.
-    No future data is pulled forward — lookahead bias avoided.
+def _align_higher_to_1h(
+    df_1h: pd.DataFrame,
+    series_or_df,
+) -> pd.DataFrame:
+    """Forward-fill a higher-TF signal onto the 1-hour grid via merge_asof.
+
+    Args:
+        df_1h: 1h DataFrame with sorted DatetimeIndex.
+        series_or_df: pd.Series or pd.DataFrame (already shifted) with
+            sorted DatetimeIndex.
+
+    Returns:
+        DataFrame (or single-column DF) indexed like df_1h, forward-filled.
     """
-    return pd.merge_asof(
-        df_entry[[]].sort_index(),
-        df_htf.sort_index(),
+    if isinstance(series_or_df, pd.Series):
+        right = series_or_df.to_frame().sort_index()
+    else:
+        right = series_or_df.sort_index()
+
+    merged = pd.merge_asof(
+        df_1h[[]].sort_index(),
+        right,
         left_index=True,
         right_index=True,
         direction="backward",
     )
+    return merged
 
 
 # ---------------------------------------------------------------------------
@@ -175,11 +210,11 @@ def _compute_outcomes(
     entry_mask: pd.Series,
     config: TestConfig,
 ) -> dict:
-    """Forward-scan every entry bar in the mask.
+    """Vectorized forward-scan outcome engine.
 
-    Enters a short at close.  Scans forward until high ≥ stop (loss) or
-    low ≤ target (win).  Ties on the same bar = loss (conservative).
-    Unresolved trades are excluded.
+    Enters a short at every True bar's close. Scans forward until stop
+    (entry + stop_mult * ATR_1h) or target (entry - target_mult * ATR_1h).
+    Unresolved trades (data ends) are excluded.
     """
     closes = df["Close"].to_numpy(dtype=float)
     highs = df["High"].to_numpy(dtype=float)
@@ -213,9 +248,6 @@ def _compute_outcomes(
                 resolved = True
                 break
 
-        if not resolved:
-            continue
-
     n_wins = len(wins)
     n_losses = len(losses)
     n_trades = n_wins + n_losses
@@ -228,16 +260,20 @@ def _compute_outcomes(
             "n_trades": 0,
         }
 
+    win_rate = n_wins / n_trades
+    profit_factor = sum(wins) / sum(losses) if losses else float("inf")
+    avg_duration = sum(durations) / len(durations)
+
     return {
-        "win_rate": n_wins / n_trades,
-        "profit_factor": sum(wins) / sum(losses) if losses else float("inf"),
-        "avg_duration": sum(durations) / len(durations),
+        "win_rate": win_rate,
+        "profit_factor": profit_factor,
+        "avg_duration": avg_duration,
         "n_trades": n_trades,
     }
 
 
 # ---------------------------------------------------------------------------
-# Data loading helpers
+# Data helpers
 # ---------------------------------------------------------------------------
 
 
@@ -258,11 +294,10 @@ def _load_parquet(
 
     candidates = sorted(symbol_dir.glob(f"{symbol}_{timeframe}_*.parquet"))
     if not candidates:
-        raise FileNotFoundError(f"No parquet file for {symbol}/{timeframe} in {symbol_dir}.")
-
-    path = candidates[0]
-    logger.debug("Exact file not found; using %s", path.name)
-    return pd.read_parquet(path)
+        raise FileNotFoundError(
+            f"No parquet file for {symbol}/{timeframe} in {symbol_dir}."
+        )
+    return pd.read_parquet(candidates[0])
 
 
 def _standardise_ohlcv(df: pd.DataFrame) -> pd.DataFrame:

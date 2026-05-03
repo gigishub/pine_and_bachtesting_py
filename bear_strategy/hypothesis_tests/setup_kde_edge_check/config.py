@@ -40,7 +40,8 @@ class TestConfig:
     # ------------------------------------------------------------------ #
     # Timeframe
     # ------------------------------------------------------------------ #
-    entry_tf: str = "4h"
+    entry_tf: str = "1h"
+    kde_tf: str = "4h"
 
     # ------------------------------------------------------------------ #
     # KDE parameters
@@ -50,7 +51,7 @@ class TestConfig:
 
     # Bandwidth multiplier applied on top of Scott's rule.
     # Scott's rule: h = n^(-1/5) × std(data) × bandwidth_mult
-    bandwidth_mult: float = 1.0
+    bandwidth_mult: float = 0.8
 
     # Number of evenly-spaced price points to evaluate the KDE curve on.
     kde_n_points: int = 500
