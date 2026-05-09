@@ -1,0 +1,167 @@
+"""Multi-pair backtesting.py runner for the Bear Strategy.
+
+Usage
+-----
+    cd /path/to/pine_script
+    source .venv/bin/activate
+    python -m bear_strategy.backtest.backtesting_py.run
+
+Or pass a custom config / params programmatically via run_all_pairs().
+"""
+
+from __future__ import annotations
+
+import logging
+from pathlib import Path
+from typing import Any
+
+import pandas as pd
+from backtesting import Backtest
+
+from bear_strategy.backtest.backtesting_py.bt_strategy import BearStrategy
+from bear_strategy.backtest.backtesting_py.configs.oss_validated import (
+    OSS_PARAMS,
+    OSS_RUN_CONFIG,
+    RunConfig,
+)
+from bear_strategy.hypothesis_test_v2.engine.data_loader import load_funding, load_ohlcv
+from bear_strategy.strategy.parameters import Parameters
+from bear_strategy.strategy.signals import compute_atr, compute_entry_signal
+
+log = logging.getLogger(__name__)
+
+
+def _to_bt_df(df: pd.DataFrame) -> pd.DataFrame:
+    """Rename lowercase OHLCV columns to the capitalised form backtesting.py expects."""
+    return df[["open", "high", "low", "close", "volume"]].rename(
+        columns={"open": "Open", "high": "High", "low": "Low",
+                 "close": "Close", "volume": "Volume"}
+    )
+
+
+def run_pair(
+    symbol: str,
+    config: RunConfig,
+    params: Parameters,
+    results_dir: Path | None = None,
+) -> dict[str, Any]:
+    """Load data, compute signals, run backtesting.py for one symbol.
+
+    Args:
+        symbol:      Ticker, e.g. "BTCUSDT".
+        config:      Run config (dates, cash, commission).
+        params:      Strategy parameters.
+        results_dir: If provided, save the stats CSV there.
+
+    Returns:
+        backtesting.py stats dict for the pair.
+    """
+    log.info("Loading data for %s …", symbol)
+    df_1h = load_ohlcv(symbol, "1h",  config.start_date, config.end_date, params.data_dir)
+    df_1d = load_ohlcv(symbol, "1d",  config.start_date, config.end_date, params.data_dir)
+    funding_df = load_funding(symbol, config.start_date, config.end_date, params.data_dir)
+
+    log.info("Computing entry signal for %s …", symbol)
+    entry_signal = compute_entry_signal(df_1h, df_1d, funding_df, params)
+    atr          = compute_atr(df_1h, params.atr_period)
+
+    bt_df = _to_bt_df(df_1h)
+
+    # Inject precomputed arrays into a *per-pair subclass* so parallel runs
+    # (if ever used) don't overwrite each other's class attributes.
+    strategy_cls = type(
+        f"BearStrategy_{symbol}",
+        (BearStrategy,),
+        {
+            "_entry_signal": entry_signal.values,
+            "_atr":          atr.values,
+            "stop_mult":     params.stop_atr_mult,
+            "target_mult":   params.target_atr_mult,
+            "trade_size":    config.trade_size,
+        },
+    )
+
+    bt = Backtest(
+        bt_df,
+        strategy_cls,
+        cash             = config.initial_cash,
+        commission       = config.commission,
+        margin           = config.margin,
+        exclusive_orders = True,   # one trade at a time (matches hypothesis test)
+    )
+    stats = bt.run()
+
+    if results_dir is not None:
+        results_dir.mkdir(parents=True, exist_ok=True)
+        out_path = results_dir / f"{symbol}_stats.csv"
+        pd.Series(stats).to_csv(out_path)
+        log.info("Stats saved to %s", out_path)
+
+    return stats
+
+
+def run_all_pairs(
+    config: RunConfig = OSS_RUN_CONFIG,
+    params: Parameters = OSS_PARAMS,
+    results_dir: Path | None = None,
+) -> dict[str, Any]:
+    """Run the backtest for every pair in config.pairs.
+
+    Args:
+        config:      Run configuration (pairs, dates, cash, commission).
+        params:      Strategy parameters.
+        results_dir: Directory to write per-pair stat CSVs.
+
+    Returns:
+        Dict mapping symbol → backtesting.py stats object.
+    """
+    all_stats: dict[str, Any] = {}
+    for symbol in config.pairs:
+        try:
+            stats = run_pair(symbol, config, params, results_dir)
+            all_stats[symbol] = stats
+            _print_summary(symbol, stats)
+        except Exception:
+            log.exception("Backtest failed for %s", symbol)
+
+    _print_aggregate(all_stats)
+    return all_stats
+
+
+def _print_summary(symbol: str, stats: Any) -> None:
+    n_trades = int(stats.get("# Trades", 0))
+    ret      = stats.get("Return [%]", float("nan"))
+    wr       = stats.get("Win Rate [%]", float("nan"))
+    dd       = stats.get("Max. Drawdown [%]", float("nan"))
+    pf       = stats.get("Profit Factor", float("nan"))
+    sqn      = stats.get("SQN", float("nan"))
+    print(
+        f"  {symbol:10s}  trades={n_trades:4d}  ret={ret:+7.2f}%  "
+        f"WR={wr:.1f}%  PF={pf:.3f}  MaxDD={dd:.1f}%  SQN={sqn:.2f}"
+    )
+
+
+def _print_aggregate(all_stats: dict[str, Any]) -> None:
+    if not all_stats:
+        return
+    rets = [s.get("Return [%]", float("nan")) for s in all_stats.values()]
+    wrs  = [s.get("Win Rate [%]", float("nan")) for s in all_stats.values()]
+    import numpy as np
+    print(
+        f"\n{'─'*65}\n"
+        f"  {len(all_stats)} pairs │ avg return {float(pd.Series(rets).mean()):+.2f}% │ "
+        f"avg WR {float(pd.Series(wrs).mean()):.1f}%"
+    )
+
+
+if __name__ == "__main__":
+    logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
+
+    _results = Path("bear_strategy/backtest/backtesting_py/results")
+    print(f"\n{'═'*65}")
+    print("  Bear Strategy — OSS-Validated Backtest")
+    print(f"  Pairs: {OSS_RUN_CONFIG.pairs}")
+    print(f"  Range: {OSS_RUN_CONFIG.start_date} → {OSS_RUN_CONFIG.end_date}")
+    print(f"{'═'*65}\n")
+
+    run_all_pairs(results_dir=_results)
