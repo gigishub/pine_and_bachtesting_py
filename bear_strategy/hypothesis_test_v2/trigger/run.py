@@ -23,6 +23,8 @@ Outputs (in trigger/results/)
 
 from __future__ import annotations
 
+import argparse
+import importlib
 import logging
 import sys
 from pathlib import Path
@@ -31,7 +33,6 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[4]))
 
 from bear_strategy.hypothesis_test_v2.batch_runner import run_phase
 from bear_strategy.hypothesis_test_v2.config import SHARED
-from bear_strategy.hypothesis_test_v2.trigger.config import BASELINE, ENTRY_TIMEFRAMES, IDEAS
 
 logging.basicConfig(
     level=logging.INFO,
@@ -42,14 +43,39 @@ logging.basicConfig(
 RESULTS_DIR = Path(__file__).parent / "results"
 
 
+def _load_trigger_config(config_module: str):
+    mod = importlib.import_module(config_module)
+    required = ("BASELINE", "ENTRY_TIMEFRAMES", "IDEAS", "PAIRS", "THRESHOLDS")
+    missing = [name for name in required if not hasattr(mod, name)]
+    if missing:
+        raise ImportError(
+            f"Config module '{config_module}' is missing required symbols: {', '.join(missing)}"
+        )
+    return mod
+
+
+def _parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="Run trigger-phase hypothesis tests")
+    parser.add_argument(
+        "--config-module",
+        default="bear_strategy.hypothesis_test_v2.trigger.config",
+        help="Python module path for trigger config",
+    )
+    return parser.parse_args()
+
+
 def main() -> None:
+    args = _parse_args()
+    cfg = _load_trigger_config(args.config_module)
+
     run_phase(
         phase            = "trigger",
-        ideas            = IDEAS,
-        baseline_cfg     = BASELINE,
-        entry_timeframes = ENTRY_TIMEFRAMES,
-        shared           = SHARED,
+        ideas            = cfg.IDEAS,
+        baseline_cfg     = cfg.BASELINE,
+        entry_timeframes = cfg.ENTRY_TIMEFRAMES,
+        shared           = {**SHARED, "pairs": cfg.PAIRS},
         results_dir      = RESULTS_DIR,
+        thresholds       = cfg.THRESHOLDS,
     )
 
 

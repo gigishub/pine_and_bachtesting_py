@@ -34,7 +34,7 @@ class TestAlignHTFSeries:
         htf_idx = _htf_index(3)
         htf_signal = pd.Series([False, True, False], index=htf_idx)
 
-        result = align_htf_series(ltf_idx, htf_signal, ltf_idx)
+        result = align_htf_series(htf_idx, htf_signal, ltf_idx)
         assert isinstance(result, pd.Series)
         assert result.index.equals(ltf_idx)
         assert result.dtype == bool
@@ -50,7 +50,7 @@ class TestAlignHTFSeries:
         # Day 2 is True, days 1 and 3 are False
         htf_signal = pd.Series([False, True, False], index=htf_idx)
 
-        result = align_htf_series(ltf_idx, htf_signal, ltf_idx)
+        result = align_htf_series(htf_idx, htf_signal, ltf_idx)
 
         day1_bars = result[result.index < pd.Timestamp("2021-01-02")]
         day2_bars = result[(result.index >= pd.Timestamp("2021-01-02")) &
@@ -65,14 +65,14 @@ class TestAlignHTFSeries:
         ltf_idx = _ltf_index(48)
         htf_idx = _htf_index(3)
         htf_signal = pd.Series([False, False, False], index=htf_idx)
-        result = align_htf_series(ltf_idx, htf_signal, ltf_idx)
+        result = align_htf_series(htf_idx, htf_signal, ltf_idx)
         assert not result.any()
 
     def test_no_nans_in_result(self) -> None:
         ltf_idx = _ltf_index(48)
         htf_idx = _htf_index(3)
         htf_signal = pd.Series([True, False, True], index=htf_idx)
-        result = align_htf_series(ltf_idx, htf_signal, ltf_idx)
+        result = align_htf_series(htf_idx, htf_signal, ltf_idx)
         assert result.notna().all()
 
 
@@ -98,7 +98,8 @@ class TestValidateNoLookahead:
         )
         # Force a True on the exact open of a daily bar without shift — lookahead
         signal = pd.Series(False, index=ltf_df.index)
-        signal.iloc[24] = True  # 2021-01-02 00:00 — daily bar open
+        # Bar 23 = 2021-01-01 23:00 — still inside Day 1's daily bar (not yet closed).
+        signal.iloc[23] = True
 
         with pytest.raises(LookaheadError):
             validate_no_lookahead(ltf_df, signal, context_tf="1D")

@@ -44,9 +44,17 @@ def _cache_filename(
     baseline_label: str,
     start: str,
     end: str,
+    atr_period: int,
+    stop_mult: float,
+    target_mult: float,
 ) -> str:
     safe = baseline_label.replace("/", "_").replace(" ", "_")
-    return f"baseline_{symbol}_{entry_tf}_{safe}_{start}_{end}.csv"
+    stop_key = str(stop_mult).replace(".", "p")
+    target_key = str(target_mult).replace(".", "p")
+    return (
+        f"baseline_{symbol}_{entry_tf}_{safe}_{start}_{end}"
+        f"_atr{atr_period}_s{stop_key}_t{target_key}.csv"
+    )
 
 
 def _compute_baseline_from_mask(
@@ -109,7 +117,16 @@ def get_or_compute_baseline(
     (baseline_pf, baseline_wr) floats.
     """
     cache_dir.mkdir(parents=True, exist_ok=True)
-    fname = _cache_filename(symbol, entry_tf, baseline_label, start, end)
+    fname = _cache_filename(
+        symbol,
+        entry_tf,
+        baseline_label,
+        start,
+        end,
+        atr_period,
+        stop_mult,
+        target_mult,
+    )
     cache_path = cache_dir / fname
 
     if cache_path.exists():

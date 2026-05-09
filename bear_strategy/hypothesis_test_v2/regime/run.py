@@ -32,7 +32,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[4]))
 
 from bear_strategy.hypothesis_test_v2.batch_runner import run_phase
 from bear_strategy.hypothesis_test_v2.config import SHARED
-from bear_strategy.hypothesis_test_v2.regime.config import BASELINE, ENTRY_TIMEFRAMES, IDEAS
+from bear_strategy.hypothesis_test_v2.regime.config import BASELINE, ENTRY_TIMEFRAMES, IDEAS, PAIRS, THRESHOLDS
 
 logging.basicConfig(
     level=logging.INFO,
@@ -49,8 +49,9 @@ def main() -> None:
         ideas            = IDEAS,
         baseline_cfg     = BASELINE,
         entry_timeframes = ENTRY_TIMEFRAMES,
-        shared           = SHARED,
+        shared           = {**SHARED, "pairs": PAIRS},
         results_dir      = RESULTS_DIR,
+        thresholds       = THRESHOLDS,
     )
 
 

@@ -63,7 +63,6 @@ from pathlib import Path
 import pandas as pd
 
 from bear_strategy.hypothesis_test_v2.engine.alignment import align_htf_series
-from bear_strategy.hypothesis_test_v2.engine.baseline_cache import get_or_compute_baseline
 from bear_strategy.hypothesis_test_v2.engine.data_loader import (
     assert_date_range_consistent,
     load_ohlcv,
@@ -72,6 +71,14 @@ from bear_strategy.hypothesis_test_v2.engine.outcome_engine import compute_outco
 from bear_strategy.hypothesis_test_v2.reports.active_board import write_active_boards
 from bear_strategy.hypothesis_test_v2.reports.phase_csv import append_row
 from bear_strategy.hypothesis_test_v2.reports.rejected_archive import append_rejected_by_tf
+
+# Default thresholds used as a fallback if a phase config omits THRESHOLDS.
+_DEFAULT_THRESHOLDS: dict = {
+    "min_pf_lift":      0.05,
+    "min_wr_zscore":    2.5,
+    "min_coverage":     0.10,
+    "min_candidate_pf": 1.0,
+}
 
 log = logging.getLogger(__name__)
 
@@ -111,11 +118,14 @@ def _compute_signal(
         Call signal(entry_df, params) directly.
     """
     mod = importlib.import_module(module_path)
+    # Inject runtime context so auxiliary-data indicators (e.g. funding rate)
+    # can load their own files.  Existing indicators ignore unknown _* keys.
+    augmented_params = {**params, "_symbol": symbol, "_data_dir": shared.get("data_dir", "crypto_data/data")}
     if context_tf:
         htf_df = _get_htf_df(symbol, context_tf, shared)
-        htf_signal = mod.signal(htf_df, params)
+        htf_signal = mod.signal(htf_df, augmented_params)
         return align_htf_series(htf_df.index, htf_signal, entry_df.index, shift=True)
-    return mod.signal(entry_df, params)
+    return mod.signal(entry_df, augmented_params)
 
 
 # ── Baseline mask ─────────────────────────────────────────────────────────────
@@ -181,21 +191,6 @@ def _run_single(
         return
 
     baseline_mask = _build_baseline_mask(df, baseline_cfg, symbol=symbol, shared=shared)
-    cache_dir     = results_dir / "baseline_cache"
-
-    baseline_pf, baseline_wr = get_or_compute_baseline(
-        df            = df,
-        baseline_mask = baseline_mask,
-        baseline_label= baseline_cfg["label"],
-        symbol        = symbol,
-        entry_tf      = entry_tf,
-        start         = shared["start"],
-        end           = shared["end"],
-        cache_dir     = cache_dir,
-        atr_period    = shared["atr_period"],
-        stop_mult     = shared["stop_atr_mult"],
-        target_mult   = shared["target_atr_mult"],
-    )
 
     csv_path = results_dir / "phase_comparison.csv"
 
@@ -219,8 +214,6 @@ def _run_single(
             stop_mult     = shared["stop_atr_mult"],
             target_mult   = shared["target_atr_mult"],
         )
-        result.baseline_pf = baseline_pf
-        result.baseline_wr = baseline_wr
 
         append_row(
             csv_path,
@@ -237,7 +230,7 @@ def _run_single(
 
         log.info(
             "  -> PF %.3f (base %.3f, lift %+.3f)  WR %.2f%%  n=%d  coverage=%.2f%%",
-            result.candidate_pf, baseline_pf, result.pf_lift,
+            result.candidate_pf, result.baseline_pf, result.pf_lift,
             result.candidate_wr * 100, result.candidate_n,
             result.candidate_coverage * 100,
         )
@@ -253,6 +246,7 @@ def run_phase(
     entry_timeframes: list[str],
     shared: dict,
     results_dir: Path,
+    thresholds: dict | None = None,
 ) -> None:
     """
     Run all *ideas* for every symbol × entry_tf combination.
@@ -268,7 +262,10 @@ def run_phase(
     entry_timeframes: Timeframes to test entries on, e.g. ["15m", "1h"].
     shared:           SHARED dict from the global config.py.
     results_dir:      Path to the phase results/ directory.
+    thresholds:       THRESHOLDS dict from the phase config.
+                      Falls back to _DEFAULT_THRESHOLDS if not supplied.
     """
+    thresholds = thresholds or _DEFAULT_THRESHOLDS
     results_dir.mkdir(parents=True, exist_ok=True)
     _htf_cache.clear()
 
@@ -297,6 +294,6 @@ def run_phase(
                 results_dir  = results_dir,
             )
 
-    write_active_boards(csv_path, results_dir, phase)
-    append_rejected_by_tf(csv_path, results_dir, phase)
+    write_active_boards(csv_path, results_dir, phase, thresholds)
+    append_rejected_by_tf(csv_path, results_dir, phase, thresholds)
     log.info("Phase [%s] complete. Results in %s", phase, results_dir)

@@ -16,11 +16,17 @@ Usage example::
 """
 
 from .downloader import download_market_data, load_market_data
+from .funding_downloader import download_funding_rates, load_funding_rates
+from .oi_downloader import download_open_interest, load_open_interest
 from .audit import audit_coin, audit_all, cross_timeframe_check
 
 __all__ = [
     "download_market_data",
     "load_market_data",
+    "download_funding_rates",
+    "load_funding_rates",
+    "download_open_interest",
+    "load_open_interest",
     "audit_coin",
     "audit_all",
     "cross_timeframe_check",

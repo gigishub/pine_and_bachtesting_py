@@ -1,40 +1,59 @@
 """
 Regime phase configuration.
 
-Baseline
---------
-type = "all_candles"
-Every warmed bar is a random entry — no prior filter applied.
-This is the CORRECT baseline for regime testing.
-
-Multi-TF support (context_tf)
-------------------------------
-Add "context_tf" to any idea to compute the signal on a different timeframe
-and have it automatically shift(1)+aligned to the entry bars with no lookahead.
-
-Example — EMA computed on 1d, entries on 15m / 1h:
-    {
-        "name":             "close_below_ema_50_1d",
-        "indicator_module": "bear_strategy.hypothesis_test_v2.regime.indicators.close_below_ema",
-        "params":           {"period": 50},
-        "context_tf":       "1d",   # ← signal computed on 1d, aligned to entry_tf
-    }
-
-Without context_tf, the signal is computed directly on the entry_tf bars.
+IDEAS are split by indicator family — edit the relevant file:
+  indicators/rsi/config.py          ← RSI-based regime ideas
+  indicators/ema/config.py          ← EMA slope / price-vs-EMA ideas
+  indicators/funding_rate/config.py ← Funding rate ideas
+  indicators/supertrend/config.py   ← Supertrend ideas
+  indicators/misc/config.py         ← Bollinger Bands, SAR
 
 How to promote to setup phase
 ------------------------------
-1. Change "decision" to "PROMOTED" in the winning idea.
+1. Change "decision" to "PROMOTED" in the winning idea (in its indicator config).
 2. Copy the indicator_module + params + context_tf (if any) to setup/config.py BASELINE.
 3. The setup phase will compare new ideas against regime-filtered bars.
 """
 
-from bear_strategy.hypothesis_test_v2.config import SHARED
+from bear_strategy.hypothesis_test_v2.config import SHARED  # noqa: F401
+from bear_strategy.hypothesis_test_v2.regime.indicators.ema.config import IDEAS as _EMA_IDEAS
+from bear_strategy.hypothesis_test_v2.regime.indicators.funding_rate.config import IDEAS as _FUNDING_IDEAS
+from bear_strategy.hypothesis_test_v2.regime.indicators.misc.config import IDEAS as _MISC_IDEAS
+from bear_strategy.hypothesis_test_v2.regime.indicators.rsi.config import IDEAS as _RSI_IDEAS
+from bear_strategy.hypothesis_test_v2.regime.indicators.supertrend.config import IDEAS as _SUPERTREND_IDEAS
+from bear_strategy.hypothesis_test_v2.regime.indicators.combinations.config import IDEAS as _COMBINATIONS_IDEAS
+
+# ── Verdict thresholds for this phase ────────────────────────────────────────
+# ── Pairs under test for this phase ─────────────────────────────────────────
+# Edit this list to narrow or expand the universe for the regime phase.
+PAIRS: list[str] = [
+    "ADAUSDT",
+    "BATUSDT",
+    "BNBUSDT",
+    "BTCUSDT",
+    "DOTUSDT",
+    "ETHUSDT",
+    "LTCUSDT",
+    "SOLUSDT",
+    "TRXUSDT",
+    "XLMUSDT",
+    "XRPUSDT",
+]
+
+# ── Verdict thresholds for this phase ────────────────────────────────────────
+# A pair is [OK] only when ALL three gates are cleared.
+# Hard floor on absolute PF > 1.0 is enforced separately inside the engine.
+THRESHOLDS: dict = {
+    "min_pf_lift":   0.05,   # absolute PF lift required
+    "min_wr_zscore": 2.5,    # WR z-score (> 2.5 → 99 % confidence)
+    "min_coverage":  0.10,   # min fraction of baseline bars that match
+    "min_candidate_pf": 1.0, # absolute PF floor — filter must not lose money
+}
 
 # ── Entry timeframes for trade entries ───────────────────────────────────────
 # These are the timeframes where trades are entered.
 # The signal can be computed on a different (context) TF — see context_tf below.
-ENTRY_TIMEFRAMES: list[str] = ["15m", "1h"]
+ENTRY_TIMEFRAMES: list[str] = ["1h","4h","1d"]
 
 # ── Baseline: all bars (unrestricted random-entry population) ─────────────────
 BASELINE: dict = {
@@ -42,47 +61,25 @@ BASELINE: dict = {
     "label": "all_candles",
 }
 
-# ── Ideas ─────────────────────────────────────────────────────────────────────
+# ── Ideas — assembled from per-indicator configs ──────────────────────────────
+# To add/enable/disable ideas for a specific indicator family, edit its config:
+#   indicators/rsi/config.py
+#   indicators/ema/config.py
+#   indicators/funding_rate/config.py
+#   indicators/supertrend/config.py
+#   indicators/misc/config.py
 IDEAS: list[dict] = [
-    # Signal on entry TF (no context_tf) — classic same-TF regime gate
-    {
-        "name":             "close_below_ema_50",
-        "enabled":          True,
-        "decision":         "PENDING",
-        "indicator_module": "bear_strategy.hypothesis_test_v2.regime.indicators.close_below_ema",
-        "params":           {"period": 50},
-        # no context_tf → signal computed on entry_tf bars directly
-    },
-    {
-        "name":             "close_below_ema_200",
-        "enabled":          True,
-        "decision":         "PENDING",
-        "indicator_module": "bear_strategy.hypothesis_test_v2.regime.indicators.close_below_ema",
-        "params":           {"period": 200},
-    },
-    # Signal on 1d context TF — EMA is smoother, avoids noise on entry_tf
-    {
-        "name":             "close_below_ema_50_1d",
-        "enabled":          True,
-        "decision":         "PENDING",
-        "indicator_module": "bear_strategy.hypothesis_test_v2.regime.indicators.close_below_ema",
-        "params":           {"period": 50},
-        "context_tf":       "1d",  # compute EMA on daily bars, align to entry_tf
-    },
-    {
-        "name":             "close_below_ema_100_1d",
-        "enabled":          True,
-        "decision":         "PENDING",
-        "indicator_module": "bear_strategy.hypothesis_test_v2.regime.indicators.close_below_ema",
-        "params":           {"period": 100},
-        "context_tf":       "1d",  # compute EMA on daily bars, align to entry_tf
-    },
-    {
-        "name":             "close_below_ema_200_1d",
-        "enabled":          True,
-        "decision":         "PENDING",
-        "indicator_module": "bear_strategy.hypothesis_test_v2.regime.indicators.close_below_ema",
-        "params":           {"period": 300},
-        "context_tf":       "1d", 
-    }
+    # *_RSI_IDEAS,
+    *_COMBINATIONS_IDEAS,
+    # *_EMA_IDEAS,
+    # *_FUNDING_IDEAS,
+    # *_SUPERTREND_IDEAS,
+    # *_MISC_IDEAS,
+    # {
+    #     "name":             "funding_bear_positive_raw",
+    #     "enabled":          True,
+    #     "decision":         "PENDING",
+    #     "indicator_module": "bear_strategy.hypothesis_test_v2.regime.indicators.funding_rate",
+    #     "params":           {"threshold": 0.0, "ma_period": 1},
+    # },
 ]

@@ -34,6 +34,8 @@ Seven simple held-state conditions tested on top:
     lower_bb_declining
         Lower Bollinger Band < lower_bb[1].
         The price floor is actively falling — directional bearish expansion.
+
+        
 """
 
 from __future__ import annotations

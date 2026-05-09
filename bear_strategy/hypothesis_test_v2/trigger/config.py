@@ -1,59 +1,81 @@
 """
-Trigger phase configuration.
+Trigger phase hypothesis testing — CONFIG 2.
 
-Baseline (PINNED from promoted regime + setup)
------------------------------------------------
-Once both regime and setup indicators are promoted, the trigger baseline
-is the population of bars that pass BOTH filters.  The trigger idea is then
-tested against that joint baseline.
+Alternative configuration with improved volume profile using session-based approach
+instead of rolling 168-bar window. Session VP resets daily, giving cleaner zones.
 
-How to update the baseline
---------------------------
-After promoting regime AND setup indicators:
-1. Set BASELINE type = "indicators"
-2. Add each promoted indicator to BASELINE["list"] in order.
-3. Re-run trigger tests — they compare against regime+setup bars.
-
-How to add an idea
-------------------
-Append a dict to IDEAS.  Set "enabled": False to skip temporarily.
+Baseline: rsi_bear_zone_1d_and_funding_bull_positive_ma3 (regime-only, no setup layer)
+Entry TFs: 1h, 4h
+Thresholds: min_coverage=0.01, min_wr_zscore=1.0, min_pf_lift=0.05, min_candidate_pf=1.0
 """
-
-from bear_strategy.hypothesis_test_v2.config import SHARED
-
-# ── Entry timeframes to test ─────────────────────────────────────────────────
-ENTRY_TIMEFRAMES: list[str] = ["15m", "1h"]
+from __future__ import annotations
 
 # ── Baseline ──────────────────────────────────────────────────────────────────
-# INITIAL STATE: all candles until regime + setup are promoted.
-# After promotion, update to:
-#
-#   BASELINE = {
-#       "type":  "indicators",
-#       "label": "ema50_rsi_range",
-#       "list": [
-#           {
-#               "module": "bear_strategy.hypothesis_test_v2.regime.indicators.close_below_ema",
-#               "params": {"period": 50},
-#           },
-#           {
-#               "module": "bear_strategy.hypothesis_test_v2.setup.indicators.rsi_range",
-#               "params": {"period": 14, "low": 40, "high": 65},
-#           },
-#       ],
-#   }
 BASELINE: dict = {
-    "type":  "all_candles",
-    "label": "all_candles",  # ← update after regime + setup are promoted
+    "type": "indicator",
+    "label": "rsi_bear_zone_1d_and_funding_bull_positive_ma3",
+    "module": "bear_strategy.hypothesis_test_v2.regime.indicators.combinations.rsi_bear_and_funding_bull",
+    "params": {
+        "rsi_type": "zone",
+        "rsi_period": 14,
+        "ma_period": 9,
+        "lower": 30,
+        "upper": 50,
+        "funding_threshold": 0.0,
+        "funding_ma_period": 3,
+        "funding_direction": "bull",
+    },
+    "context_tf": "1d",
 }
 
+# ── Pairs ─────────────────────────────────────────────────────────────────────
+PAIRS: list[str] = [
+    "ADAUSDT",
+    "BATUSDT",
+    "BNBUSDT",
+    "BTCUSDT",
+    "DOTUSDT",
+    "ETHUSDT",
+    "LTCUSDT",
+    "SOLUSDT",
+    "TRXUSDT",
+    "XLMUSDT",
+    "XRPUSDT",
+]
+
+# ── Entry Timeframes ──────────────────────────────────────────────────────────
+ENTRY_TIMEFRAMES: list[str] = ["1h", "4h"]
+
+# ── Thresholds ────────────────────────────────────────────────────────────────
+MIN_PF_LIFT: float = 0.05          # Minimum PF improvement over baseline
+MIN_WR_ZSCORE: float = 1.0         # Relaxed for rare trigger signals
+MIN_COVERAGE: float = 0.01         # Allow very rare triggers (1%)
+MIN_CANDIDATE_PF: float = 1.0      # Absolute floor: must not lose money
+
+MIN_PF_LIFT_LOW_N: float = 0.10    # Stricter for very low sample size (<100 trades)
+
 # ── Ideas ─────────────────────────────────────────────────────────────────────
+# Session-based volume profile triggers ONLY (testing alternative approach)
 IDEAS: list[dict] = [
     {
-        "name":             "ema_cross_down",
+        "name":             "vp_session_poc_break",
         "enabled":          True,
         "decision":         "PENDING",
-        "indicator_module": "bear_strategy.hypothesis_test_v2.trigger.indicators.ema_cross_down",
-        "params":           {"fast_period": 8, "slow_period": 21},
+        "indicator_module": "bear_strategy.hypothesis_test_v2.trigger.indicators.vp_session_poc_break",
+        "params":           {"price_bins": 100},
+    },
+    {
+        "name":             "vp_session_hvn_break",
+        "enabled":          True,
+        "decision":         "PENDING",
+        "indicator_module": "bear_strategy.hypothesis_test_v2.trigger.indicators.vp_session_hvn_break",
+        "params":           {"price_bins": 100},
+    },
+    {
+        "name":             "vp_session_lvn_entry",
+        "enabled":          True,
+        "decision":         "PENDING",
+        "indicator_module": "bear_strategy.hypothesis_test_v2.trigger.indicators.vp_session_lvn_entry",
+        "params":           {"price_bins": 100},
     },
 ]
