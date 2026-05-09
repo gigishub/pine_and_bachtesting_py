@@ -20,8 +20,8 @@ from backtesting import Backtest
 
 from bear_strategy.backtest.backtesting_py.bt_strategy import BearStrategy
 from bear_strategy.backtest.backtesting_py.configs.oss_validated import (
-    OSS_PARAMS,
-    OSS_RUN_CONFIG,
+    DEFAULT_PARAMS,
+    DEFAULT_RUN_CONFIG,
     RunConfig,
 )
 from bear_strategy.hypothesis_test_v2.engine.data_loader import load_funding, load_ohlcv
@@ -77,10 +77,11 @@ def run_pair(
             "_atr":          atr.values,
             "stop_mult":     params.stop_atr_mult,
             "target_mult":   params.target_atr_mult,
-            "trade_size":    config.trade_size,
+            "risk_pct":      config.risk_pct,
         },
     )
 
+    # FractionalBacktest handles assets priced above initial_cash (e.g. BTC at $50k+)
     bt = Backtest(
         bt_df,
         strategy_cls,
@@ -90,6 +91,14 @@ def run_pair(
         exclusive_orders = True,   # one trade at a time (matches hypothesis test)
     )
     stats = bt.run()
+
+    # Save interactive chart with trade markers for a selected pair.
+    if config.plot_trades and symbol == config.plot_pair:
+        chart_dir = (results_dir or Path("bear_strategy/backtest/backtesting_py/results"))
+        chart_dir.mkdir(parents=True, exist_ok=True)
+        chart_path = chart_dir / f"{symbol}_trades_chart.html"
+        bt.plot(filename=str(chart_path), open_browser=False)
+        log.info("Trade chart saved to %s", chart_path)
 
     if results_dir is not None:
         results_dir.mkdir(parents=True, exist_ok=True)
@@ -101,8 +110,8 @@ def run_pair(
 
 
 def run_all_pairs(
-    config: RunConfig = OSS_RUN_CONFIG,
-    params: Parameters = OSS_PARAMS,
+    config: RunConfig = DEFAULT_RUN_CONFIG,
+    params: Parameters = DEFAULT_PARAMS,
     results_dir: Path | None = None,
 ) -> dict[str, Any]:
     """Run the backtest for every pair in config.pairs.
@@ -131,12 +140,13 @@ def run_all_pairs(
 def _print_summary(symbol: str, stats: Any) -> None:
     n_trades = int(stats.get("# Trades", 0))
     ret      = stats.get("Return [%]", float("nan"))
+    bnh      = stats.get("Buy & Hold Return [%]", float("nan"))
     wr       = stats.get("Win Rate [%]", float("nan"))
     dd       = stats.get("Max. Drawdown [%]", float("nan"))
     pf       = stats.get("Profit Factor", float("nan"))
     sqn      = stats.get("SQN", float("nan"))
     print(
-        f"  {symbol:10s}  trades={n_trades:4d}  ret={ret:+7.2f}%  "
+        f"  {symbol:10s}  trades={n_trades:4d}  ret={ret:+7.2f}%  B&H={bnh:+7.2f}%  "
         f"WR={wr:.1f}%  PF={pf:.3f}  MaxDD={dd:.1f}%  SQN={sqn:.2f}"
     )
 
@@ -159,9 +169,11 @@ if __name__ == "__main__":
 
     _results = Path("bear_strategy/backtest/backtesting_py/results")
     print(f"\n{'═'*65}")
-    print("  Bear Strategy — OSS-Validated Backtest")
-    print(f"  Pairs: {OSS_RUN_CONFIG.pairs}")
-    print(f"  Range: {OSS_RUN_CONFIG.start_date} → {OSS_RUN_CONFIG.end_date}")
+    print("  Bear Strategy — In-Sample Backtest (development window)")
+    print(f"  Pairs: {DEFAULT_RUN_CONFIG.pairs}")
+    print(f"  Range: {DEFAULT_RUN_CONFIG.start_date} → {DEFAULT_RUN_CONFIG.end_date}")
+    print(f"  Cash: ${DEFAULT_RUN_CONFIG.initial_cash:,.0f}  Commission: {DEFAULT_RUN_CONFIG.commission*100:.2f}%")
+    print(f"  Risk per trade: {DEFAULT_RUN_CONFIG.risk_pct*100:.1f}% of equity")
     print(f"{'═'*65}\n")
 
     run_all_pairs(results_dir=_results)
