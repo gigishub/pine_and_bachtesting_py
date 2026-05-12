@@ -29,6 +29,9 @@ class BearStrategy(Strategy):
     target_mult: float = 3.0
     # Risk per trade as a fraction of current equity (e.g. 0.01 = 1 %).
     risk_pct:    float = 0.01
+    # Skip entries where stop distance / price < this fraction (0.005 = 0.5%).
+    # Prevents trades where taker fees eat an outsized share of the risk premium.
+    min_sl_pct:  float = 0.005
 
     def init(self) -> None:
         self.entry = self.I(lambda: self.__class__._entry_signal, name="entry", plot=False)
@@ -48,6 +51,11 @@ class BearStrategy(Strategy):
         ref          = self.data.Close[-1]
         stop_dist    = self.__class__.stop_mult * atr   # price distance to SL
         sl_price     = ref + stop_dist
+
+        # Skip if stop distance is too small relative to price (fees would dominate).
+        if stop_dist / ref < self.__class__.min_sl_pct:
+            return
+
         tp_price     = ref - self.__class__.target_mult * atr
         if tp_price <= 0:
             # Target would go below zero — skip this signal (price too low vs ATR).

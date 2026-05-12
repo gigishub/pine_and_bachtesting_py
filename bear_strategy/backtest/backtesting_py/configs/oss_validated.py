@@ -66,5 +66,7 @@ DEFAULT_PARAMS = Parameters(
     atr_period      = 7,
     stop_atr_mult   = 2.0,
     target_atr_mult = 3.0,
+    min_sl_pct      = 0.005,
+    risk_pct        = 0.01,
     data_dir        = "crypto_data/data",
 )

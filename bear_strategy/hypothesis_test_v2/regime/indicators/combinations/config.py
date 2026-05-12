@@ -11,7 +11,7 @@ IDEAS: list[dict] = [
     {
         "name":             "rsi_bear_zone_1d_and_funding_bull_positive_raw",
         "enabled":          True,
-        "decision":         "REJECTED",
+        "decision":         "PENDING",
         "indicator_module": f"{_BASE}.rsi_bear_and_funding_bull",
         "params":           {
             "rsi_type": "zone",

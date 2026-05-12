@@ -27,17 +27,30 @@ from bear_strategy.hypothesis_test_v2.regime.indicators.combinations.config impo
 # ── Pairs under test for this phase ─────────────────────────────────────────
 # Edit this list to narrow or expand the universe for the regime phase.
 PAIRS: list[str] = [
+    "AAVEUSDT",
     "ADAUSDT",
+    "ALGOUSDT",
+    "ATOMUSDT",
+    "AVAXUSDT",
     "BATUSDT",
+    "BCHUSDT",
     "BNBUSDT",
     "BTCUSDT",
+    "DOGEUSDT",
     "DOTUSDT",
     "ETHUSDT",
+    "HYPEUSDT",
+    "LINKUSDT",
     "LTCUSDT",
+    "NEARUSDT",
     "SOLUSDT",
+    "TONUSDT",
     "TRXUSDT",
+    "UNIUSDT",
     "XLMUSDT",
+    "XMRUSDT",
     "XRPUSDT",
+    "ZECUSDT",
 ]
 
 # ── Verdict thresholds for this phase ────────────────────────────────────────

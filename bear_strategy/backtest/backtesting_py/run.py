@@ -78,6 +78,7 @@ def run_pair(
             "stop_mult":     params.stop_atr_mult,
             "target_mult":   params.target_atr_mult,
             "risk_pct":      config.risk_pct,
+            "min_sl_pct":    params.min_sl_pct,
         },
     )
 
