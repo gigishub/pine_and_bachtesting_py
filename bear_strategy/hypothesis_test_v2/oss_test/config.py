@@ -40,12 +40,12 @@ PAIRS: list[str] = [
 ]
 
 # ── Entry timeframes ──────────────────────────────────────────────────────────
-ENTRY_TIMEFRAMES: list[str] = ["1h"]
+ENTRY_TIMEFRAMES: list[str] = ["4h","1h"]
 
 # ── Pass/fail thresholds ──────────────────────────────────────────────────────
 THRESHOLDS: dict = {
     "min_pf_lift":       0.1,
-    "min_wr_zscore":     1.2,
+    "min_wr_zscore":     1.0,
     "min_coverage":      0.01,   # OOS — highly selective triggers are acceptable
     "min_candidate_pf":  1.15,
 }
@@ -101,8 +101,10 @@ STRATEGIES: list[dict] = [
             },
             # ── Trigger: Session VP POC or HVN break ───────────────────
             {
-                "module": "bear_strategy.hypothesis_test_v2.trigger.indicators.vp_session_poc_or_hvn_break",
-                "params": {"price_bins": 50},
+                "module": "bear_strategy.hypothesis_test_v2.trigger.indicators.roc_cross_below_zero",
+                "params":           {"length": 12},
+                # "module": "bear_strategy.hypothesis_test_v2.trigger.indicators.vp_session_poc_or_hvn_break",
+                # "params": {"price_bins": 50},
             },
         ],
     },

@@ -1,0 +1,53 @@
+Config:      sl_sweep
+Symbols:     BTCUSDT, ETHUSDT, SOLUSDT, XRPUSDT, BNBUSDT, ADAUSDT, DOTUSDT, LTCUSDT, XLMUSDT
+Period:      2021-01-01  →  2023-11-01
+Fees:        0.110%   Init cash: $10,000
+Exclusive:   none (combination mode)
+
+Regime (always active)
+----------------------------------------------------------
+  RSI bear zone (1d) + Funding bull guard (1h) are always ON.
+  Numeric regime params appear in the Numeric Sweeps section.
+
+Trigger Flags
+----------------------------------------------------------
+  FLAG                           STATUS         VALUE(S)
+  ----------------------------- ------------- ------------
+  use_vp_trigger                 pinned OFF   False
+
+Exit Flags
+----------------------------------------------------------
+  FLAG                           STATUS         VALUE(S)
+  ----------------------------- ------------- ------------
+  use_fixed_tp                   pinned OFF   False
+  use_rsi_exit                   pinned OFF   False
+  use_macd_exit                  pinned OFF   False
+  use_rsi_oversold_exit          pinned OFF   False
+  use_ema_reclaim_exit           pinned OFF   False
+  use_funding_exit               pinned OFF   False
+
+Numeric Sweeps
+----------------------------------------------------------
+  PARAM                          STATUS         VALUE(S)
+  ----------------------------- ------------- ------------
+  use_vbt_sl                     swept        False / True
+  use_vbt_sl_trail               swept        False / True
+  stop_atr_mult                  pinned       2.0
+  target_atr_mult                pinned       3.0
+  atr_period                     pinned       7
+  exit_rsi_level                 pinned       50.0
+  rsi_oversold_level             pinned       30.0
+  exit_ema_period                pinned       21
+  macd_fast_period               pinned       12
+  macd_slow_period               pinned       26
+  rsi_lower                      pinned       30.0
+  rsi_upper                      pinned       50.0
+  funding_threshold              pinned       0.0
+  sl_n_atr_init                  swept        0.3 / 0.5 / 0.8
+  sl_n_atr_trail                 swept        0.3 / 0.5 / 0.8
+  sl_swing_lookback              swept        5 / 10 / 20
+  entry_every_n                  pinned       1
+  entry_phase                    pinned       1
+
+Grid size (upper bound, before validity filtering):  108 combos
+Conditions: 9 symbol(s)

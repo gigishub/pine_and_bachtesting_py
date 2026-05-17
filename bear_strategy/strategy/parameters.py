@@ -82,6 +82,38 @@ class Parameters:
     # ── Data ─────────────────────────────────────────────────────────────────
     data_dir: str = "crypto_data/data"
 
+    # ── Trigger flags ─────────────────────────────────────────────────────────
+    # At least one trigger flag must be True for an entry to fire.
+    # New triggers can be added here and wired in backtest/vectorbt/signals.py.
+    use_vp_trigger: bool = True   # Session VP POC/HVN break
+
+    # ── Exit flags ────────────────────────────────────────────────────────────
+    # At least one exit flag must be True.  Multiple active flags → OR logic:
+    # the trade closes on whichever signal fires first.
+    # use_fixed_tp=True keeps the ATR-based VBT tp_stop;
+    # setting it False zeros tp_pct (indicator-only exit).
+    use_fixed_tp:          bool = True   # ATR-based take-profit stop
+    use_rsi_exit:          bool = False  # daily RSI crosses above exit_rsi_level
+    use_macd_exit:         bool = False  # 1h MACD histogram negative→≥0
+    use_rsi_oversold_exit: bool = False  # 1h RSI drops below rsi_oversold_level
+    use_ema_reclaim_exit:  bool = False  # 1h close crosses back above EMA
+    use_funding_exit:      bool = False  # EMA-smoothed funding drops ≤ threshold
+
+    # ── VBT-native trailing stop ──────────────────────────────────────────────
+    # Two-step: (1) entry-candle SL replaces the ATR-fraction SL when use_vbt_sl=True.
+    #           (2) swing-high ratchet tightens the stop as price falls when
+    #               use_vbt_sl_trail=True (requires use_vbt_sl=True).
+    #
+    # use_vbt_sl=False  → classic ATR-fraction SL from stop_atr_mult (no change)
+    # use_vbt_sl=True   → SL set at candle high + sl_n_atr_init × ATR(sl_atr_period)
+    # use_vbt_sl_trail=True → above + ratchet via rolling swing_high(sl_swing_lookback)
+    use_vbt_sl:       bool  = False   # enable entry-candle SL
+    use_vbt_sl_trail: bool  = False   # enable swing-high trailing ratchet
+    sl_atr_period:    int   = 14      # ATR period for entry-candle SL
+    sl_n_atr_init:    float = 0.5     # ATR buffer above entry candle high
+    sl_n_atr_trail:   float = 0.5     # ATR buffer above trailing swing high
+    sl_swing_lookback: int  = 10      # rolling window (bars) for swing high
+
     # ── Legacy EMA-based regime fields (hypothesis_tests/ backward compat) ───
     ema_slope_period:   int       = 200
     ema_slope_lookback: int       = 1

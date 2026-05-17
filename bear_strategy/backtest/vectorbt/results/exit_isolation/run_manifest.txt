@@ -1,0 +1,46 @@
+Config:      exit_isolation
+Symbols:     BTCUSDT, ETHUSDT, SOLUSDT, XRPUSDT, BNBUSDT, ADAUSDT, DOTUSDT, LTCUSDT, XLMUSDT
+Period:      2021-01-01  →  2023-11-01
+Fees:        0.080%   Init cash: $10,000
+Exclusive:   exit
+
+Regime (always active)
+----------------------------------------------------------
+  RSI bear zone (1d) + Funding bull guard (1h) are always ON.
+  Numeric regime params appear in the Numeric Sweeps section.
+
+Trigger Flags
+----------------------------------------------------------
+  FLAG                           STATUS         VALUE(S)
+  ----------------------------- ------------- ------------
+  use_vp_trigger                 pinned ON    True
+
+Exit Flags
+----------------------------------------------------------
+  FLAG                           STATUS         VALUE(S)
+  ----------------------------- ------------- ------------
+  use_fixed_tp                   swept        False / True
+  use_rsi_exit                   swept        False / True
+  use_macd_exit                  swept        False / True
+  use_rsi_oversold_exit          swept        False / True
+  use_ema_reclaim_exit           swept        False / True
+  use_funding_exit               swept        False / True
+
+Numeric Sweeps
+----------------------------------------------------------
+  PARAM                          STATUS         VALUE(S)
+  ----------------------------- ------------- ------------
+  stop_atr_mult                  pinned       2.0
+  target_atr_mult                pinned       3.0
+  atr_period                     pinned       7
+  exit_rsi_level                 pinned       50.0
+  rsi_oversold_level             pinned       30.0
+  exit_ema_period                pinned       21
+  macd_fast_period               pinned       12
+  macd_slow_period               pinned       26
+  rsi_lower                      pinned       30.0
+  rsi_upper                      pinned       50.0
+  funding_threshold              pinned       0.0
+
+Grid size (upper bound, before validity filtering):  64 combos
+Conditions: 9 symbol(s)

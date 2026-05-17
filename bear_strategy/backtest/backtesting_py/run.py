@@ -7,14 +7,25 @@ Usage
     python -m bear_strategy.backtest.backtesting_py.run
 
 Or pass a custom config / params programmatically via run_all_pairs().
+
+Exit-condition sweep
+--------------------
+    python -m bear_strategy.backtest.backtesting_py.run --sweep
+
+Tests all 4 combinations of:
+  use_fixed_tp   × use_vbt_sl_trail  (True/False each)
+SL is always active — every combination produces trades.
 """
 
 from __future__ import annotations
 
 import logging
+from dataclasses import replace
+from itertools import product
 from pathlib import Path
 from typing import Any
 
+import numpy as np
 import pandas as pd
 from backtesting import Backtest
 
@@ -69,18 +80,29 @@ def run_pair(
 
     # Inject precomputed arrays into a *per-pair subclass* so parallel runs
     # (if ever used) don't overwrite each other's class attributes.
-    strategy_cls = type(
-        f"BearStrategy_{symbol}",
-        (BearStrategy,),
-        {
-            "_entry_signal": entry_signal.values,
-            "_atr":          atr.values,
-            "stop_mult":     params.stop_atr_mult,
-            "target_mult":   params.target_atr_mult,
-            "risk_pct":      config.risk_pct,
-            "min_sl_pct":    params.min_sl_pct,
-        },
-    )
+    attrs: dict[str, Any] = {
+        "_entry_signal":  entry_signal.values,
+        "_atr":           atr.values,
+        "stop_mult":      params.stop_atr_mult,
+        "target_mult":    params.target_atr_mult,
+        "risk_pct":       config.risk_pct,
+        "min_sl_pct":     params.min_sl_pct,
+        # ── exit flags ────────────────────────────────────────────────────────
+        "use_fixed_tp":     params.use_fixed_tp,
+        "use_vbt_sl_trail": params.use_vbt_sl_trail,
+        "sl_n_atr_trail":   params.sl_n_atr_trail,
+    }
+
+    # Precompute rolling swing-high only when trailing SL is requested.
+    if params.use_vbt_sl_trail:
+        swing_high = (
+            df_1h["high"]
+            .rolling(params.sl_swing_lookback, min_periods=1)
+            .max()
+        )
+        attrs["_swing_high"] = swing_high.values
+
+    strategy_cls = type(f"BearStrategy_{symbol}", (BearStrategy,), attrs)
 
     # FractionalBacktest handles assets priced above initial_cash (e.g. BTC at $50k+)
     bt = Backtest(
