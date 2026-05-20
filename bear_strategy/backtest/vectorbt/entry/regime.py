@@ -14,12 +14,17 @@ Conditions
    Positive funding means longs pay shorts — a tailwind for short positions.
    Guards against shorting when carry is adverse (extreme negative funding).
    Implemented in bear_strategy/strategy/indicators/regime/funding_bull_guard.py.
+
+3. 200d EMA below filter  (optional — activated via params.use_ema_200_regime)
+   Daily close must be below the 200-period daily EMA — confirms bearish macro
+   structure before any entry is allowed.
 """
 
 from __future__ import annotations
 
 import pandas as pd
 
+from bear_strategy.backtest.vectorbt.indicators import compute_ema
 from bear_strategy.hypothesis_test_v2.engine.alignment import align_htf_to_ltf
 from bear_strategy.strategy.indicators.regime.funding_bull_guard import compute_funding_bull_guard
 from bear_strategy.strategy.indicators.regime.rsi_bear_zone    import compute_rsi_bear_zone
@@ -58,4 +63,13 @@ def compute_regime_filter(
         df_1h, funding_df, params.funding_threshold, params.funding_ma_period
     )
 
-    return (regime & funding).fillna(False)
+    regime = regime & funding
+
+    # --- Condition 3: price below 200d EMA (optional) ---
+    if params.use_ema_200_regime:
+        ema_200 = compute_ema(df_1d["close"].astype(float), 200)
+        below_ema = (df_1d["close"].astype(float) < ema_200)
+        below_ema_1h = align_htf_to_ltf(df_1d, below_ema, df_1h, shift=True)
+        regime = regime & below_ema_1h.fillna(False)
+
+    return regime.fillna(False)

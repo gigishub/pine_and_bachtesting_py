@@ -1,0 +1,65 @@
+Config:      new_exits_sweep
+Symbols:     BTCUSDT
+Period:      2021-01-01  →  2023-11-01
+Fees:        0.110%   Init cash: $10,000
+Exclusive:   none (combination mode)
+
+Regime (always active)
+----------------------------------------------------------
+  RSI bear zone (1d) + Funding bull guard (1h) are always ON.
+  Numeric regime params appear in the Numeric Sweeps section.
+
+Trigger Flags
+----------------------------------------------------------
+  FLAG                           STATUS         VALUE(S)
+  ----------------------------- ------------- ------------
+  use_vp_trigger                 pinned ON    True
+
+Exit Flags
+----------------------------------------------------------
+  FLAG                           STATUS         VALUE(S)
+  ----------------------------- ------------- ------------
+  use_fixed_tp                   pinned ON    True
+  use_rsi_exit                   pinned OFF   False
+  use_macd_exit                  pinned OFF   False
+  use_rsi_oversold_exit          pinned OFF   False
+  use_ema_reclaim_exit           pinned OFF   False
+  use_funding_exit               pinned OFF   False
+
+Numeric Sweeps
+----------------------------------------------------------
+  PARAM                          STATUS         VALUE(S)
+  ----------------------------- ------------- ------------
+  use_ema_above_exit             swept        False / True
+  use_vwap_exit                  swept        False / True
+  use_vwma_exit                  swept        False / True
+  use_engulfing_exit             swept        False / True
+  use_hammer_exit                swept        False / True
+  use_vbt_sl                     pinned OFF   False
+  use_vbt_sl_trail               pinned OFF   False
+  stop_atr_mult                  swept        1.5 / 2.0 / 2.5
+  target_atr_mult                swept        2.0 / 3.0 / 4.0
+  atr_period                     pinned       7
+  vp_price_bins                  pinned       50
+  exit_rsi_level                 pinned       50.0
+  rsi_oversold_level             pinned       30.0
+  exit_ema_period                pinned       21
+  macd_fast_period               pinned       12
+  macd_slow_period               pinned       26
+  rsi_lower                      pinned       30.0
+  rsi_upper                      pinned       50.0
+  funding_threshold              pinned       0.0
+  sl_n_atr_init                  pinned       0.5
+  sl_n_atr_trail                 pinned       0.5
+  sl_swing_lookback              pinned       10
+  ema_above_period               swept        14 / 20 / 34
+  vwap_anchor_hours              swept        24 / 48 / 168
+  vwma_period                    swept        10 / 20 / 34 / 55
+  engulfing_ratio                swept        0.8 / 1.0 / 1.2
+  hammer_wick_ratio              swept        1.5 / 2.0 / 3.0
+  entry_regime_offset            pinned       2
+  entry_every_n                  pinned       1
+  entry_phase                    pinned       1
+
+Grid size (upper bound, before validity filtering):  93,312 combos
+Conditions: 1 symbol(s)

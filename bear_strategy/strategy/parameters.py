@@ -27,6 +27,13 @@ class Parameters:
     # ── Trigger: Session Volume Profile POC / HVN break (entry TF) ───────────
     vp_price_bins: int = 50
 
+    # ── Entry throttle: regime-aware position within each regime window ───────
+    # Starting position for entries in each new regime window:
+    #   1 = take 1st trigger onwards (accept every trigger)
+    #   2 = take 2nd trigger onwards (skip 1st)  ← default, skips crowded entry
+    #   3 = take 3rd trigger onwards (skip 1st & 2nd)
+    entry_regime_offset: int = 4
+
     # ── Risk: ATR-based stop and target ──────────────────────────────────────
     atr_period:      int   = 7
     stop_atr_mult:   float = 2.0
@@ -43,14 +50,6 @@ class Parameters:
     # Size = risk_pct / sl_pct_fraction so each trade risks exactly risk_pct × equity.
     risk_pct: float = 0.01
 
-    # ── Entry throttling (signal sampling) ───────────────────────────────────
-    # Keep every Nth raw trigger. Useful when triggers are too dense.
-    # entry_phase selects which hit in each N-sized cycle is tradable (1..N).
-    # Examples:
-    #   entry_every_n=2, entry_phase=1 -> 1st, 3rd, 5th ... trigger
-    #   entry_every_n=2, entry_phase=2 -> 2nd, 4th, 6th ... trigger
-    entry_every_n: int = 1
-    entry_phase: int = 1
 
     # ── Exit mode (SL is always active) ──────────────────────────────────────
     # fixed_tp:                    SL + fixed ATR-based take-profit
@@ -79,6 +78,33 @@ class Parameters:
     # ── EMA reclaim exit parameters (ema_reclaim) ─────────────────────────────
     exit_ema_period: int = 21
 
+    # ── EMA-above exit parameters (ema_above) ─────────────────────────────────
+    ema_above_period: int = 20
+
+    # ── VWAP exit parameters (vwap_above) ────────────────────────────────────
+    # vwap_anchor_hours: size of each VWAP anchor window in hours.
+    #   24  = daily-anchored (resets every 24h)
+    #   48  = 2-day rolling window
+    #   168 = weekly-anchored (resets every 7 days)
+    # Larger windows produce a smoother VWAP that lags more but gives fewer
+    # false exits; smaller windows are more reactive.
+    vwap_anchor_hours: int = 24
+
+    # ── VWMA exit parameters (vwma_above) ─────────────────────────────────────
+    # vwma_period: rolling lookback in bars for the volume-weighted MA.
+    # Shorter = faster, more responsive; longer = smoother, fewer signals.
+    vwma_period: int = 20
+
+    # ── Engulfing candle exit parameters ──────────────────────────────────────
+    # engulfing_ratio: current bullish body must be >= ratio × prev bearish body.
+    # Values < 1.0 allow partial engulfs; > 1.0 require full+buffer engulf.
+    engulfing_ratio: float = 1.0
+
+    # ── Hammer candle exit parameters ─────────────────────────────────────────
+    # hammer_wick_ratio: lower wick must be >= ratio × body size.
+    # Higher = only strong hammers trigger the exit.
+    hammer_wick_ratio: float = 2.0
+
     # ── Data ─────────────────────────────────────────────────────────────────
     data_dir: str = "crypto_data/data"
 
@@ -98,7 +124,21 @@ class Parameters:
     use_rsi_oversold_exit: bool = False  # 1h RSI drops below rsi_oversold_level
     use_ema_reclaim_exit:  bool = False  # 1h close crosses back above EMA
     use_funding_exit:      bool = False  # EMA-smoothed funding drops ≤ threshold
+    use_ema_above_exit:    bool = False  # 1h close is above EMA(ema_above_period)
+    use_vwap_exit:         bool = False  # 1h close is above anchor-period VWAP
+    use_vwma_exit:         bool = False  # 1h close is above VWMA(vwma_period)
+    use_engulfing_exit:    bool = False  # bullish engulfing candle on 1h
+    use_hammer_exit:       bool = False  # hammer candle on 1h
+    use_bb_mean_reversion_exit: bool = False  # Bollinger Bands mean reversion exit
+    use_atr_reversal_exit: bool = False  # ATR reversal exit
 
+    # ── Bollinger Bands exit parameters ───────────────────────────────────────
+    bb_period: int = 20      # SMA lookback for BB
+    bb_num_std: float = 2.0  # Number of standard deviations
+
+    # ── ATR reversal exit parameters ──────────────────────────────────────────
+    atr_reversal_mult: float = 1.5  # ATR threshold multiplier for reversal
+    atr_reversal_period: int = 14   # ATR period for reversal calculation
     # ── VBT-native trailing stop ──────────────────────────────────────────────
     # Two-step: (1) entry-candle SL replaces the ATR-fraction SL when use_vbt_sl=True.
     #           (2) swing-high ratchet tightens the stop as price falls when
@@ -113,6 +153,11 @@ class Parameters:
     sl_n_atr_init:    float = 0.5     # ATR buffer above entry candle high
     sl_n_atr_trail:   float = 0.5     # ATR buffer above trailing swing high
     sl_swing_lookback: int  = 10      # rolling window (bars) for swing high
+
+    # ── Regime: 200d EMA below filter (optional, off by default) ────────────────
+    # When True, entries are only allowed when the daily close is BELOW the
+    # 200-period daily EMA — confirming bearish macro structure.
+    use_ema_200_regime: bool = False
 
     # ── Legacy EMA-based regime fields (hypothesis_tests/ backward compat) ───
     ema_slope_period:   int       = 200

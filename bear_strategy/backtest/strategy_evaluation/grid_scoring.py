@@ -6,15 +6,16 @@ Column names match the new pipeline._build_row output:
 
 Scoring formula (0–1 composite, weights sum to 1.0)
 ----------------------------------------------------
-  SQN           30 %  — captures both edge size and trade count
-  Profit Factor 25 %  — gross edge in dollar terms
-  Expectancy %  25 %  — average per-trade outcome
-  Sharpe Ratio  10 %  — consistency of returns
+  Return [%]    20 %  — total profit; what you actually care about
+  Profit Factor 25 %  — gross edge validation
+  Expectancy %  20 %  — per-trade consistency; validates Return isn't luck
+  Sharpe Ratio  15 %  — consistency of returns over time
+  SQN           10 %  — signal exists; distinguishes "barely passes" from "crushes it"
   Max Drawdown  10 %  — survivability (inverted: lower DD scores higher)
 
 Robustness score (cross-symbol, single-TF)
 ------------------------------------------
-  final_score = avg_score × (symbols_passing / N_total)
+  final_score = avg_score × √(symbols_passing / N_total)
 
 No timeframe multiplier — the bear strategy runs on a single 1H timeframe.
 """
@@ -26,14 +27,14 @@ import math
 import pandas as pd
 
 # ── Gate defaults ──────────────────────────────────────────────────────────────
-DEFAULT_MIN_SQN:    float = 0.0
-DEFAULT_MIN_PF:     float = 1.0
-DEFAULT_MIN_TRADES: int   = 10
+DEFAULT_MIN_SQN:    float = 0.6
+DEFAULT_MIN_PF:     float = 1.1
+DEFAULT_MIN_TRADES: int   = 30
 DEFAULT_MIN_WR:     float = 0.0
-DEFAULT_MAX_DD:     float = 60.0
+DEFAULT_MAX_DD:     float = 20.0
 
 # ── Score weights ──────────────────────────────────────────────────────────────
-_W = {"sqn": 0.30, "pf": 0.25, "exp": 0.25, "sharpe": 0.10, "dd": 0.10}
+_W = {"ret": 0.20, "pf": 0.25, "exp": 0.20, "sharpe": 0.15, "sqn": 0.10, "dd": 0.10}
 
 
 def _norm(v: float, lo: float, hi: float) -> float:
@@ -50,10 +51,11 @@ def _g(row: pd.Series, col: str) -> float:
 def score_row(row: pd.Series) -> float:
     """0–1 composite edge score for one combo/symbol row."""
     return (
-        _W["sqn"]    * _norm(_g(row, "SQN"),              0.0, 3.0)
-        + _W["pf"]   * _norm(_g(row, "Profit Factor"),    1.0, 4.0)
-        + _W["exp"]  * _norm(_g(row, "Expectancy [%]"),   0.0, 5.0)
-        + _W["sharpe"] * _norm(_g(row, "Sharpe Ratio"),   0.0, 2.0)
+        _W["ret"]    * _norm(_g(row, "Return [%]"),        -20.0, 100.0)
+        + _W["pf"]   * _norm(_g(row, "Profit Factor"),       1.0,   4.0)
+        + _W["exp"]  * _norm(_g(row, "Expectancy [%]"),      0.0,   5.0)
+        + _W["sharpe"] * _norm(_g(row, "Sharpe Ratio"),      0.0,   2.0)
+        + _W["sqn"]  * _norm(_g(row, "SQN"),                 0.0,   3.0)
         + _W["dd"]   * (1.0 - _norm(_g(row, "Max Drawdown [%]"), 0.0, 60.0))
     )
 
@@ -138,7 +140,7 @@ def compute_weighted_scores(df: pd.DataFrame) -> pd.DataFrame:
             "symbols_passing": n_pass,
             "N_total":         n_total,
             "breadth":         round(breadth, 4),
-            "final_score":     round(avg_score * breadth, 4),
+            "final_score":     round(avg_score * math.sqrt(breadth), 4),
         })
 
     return (

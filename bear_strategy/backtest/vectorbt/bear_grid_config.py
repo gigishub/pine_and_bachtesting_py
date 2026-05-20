@@ -27,6 +27,7 @@ from bear_strategy.strategy.parameters import Parameters
 # Regime flags are always active (no toggle), so they are excluded.
 # use_exit_rsi is a legacy field and is excluded.
 _AUDITABLE_BEAR_FLAGS: tuple[str, ...] = (
+    "use_ema_200_regime",
     "use_vp_trigger",
     "use_fixed_tp",
     "use_rsi_exit",
@@ -34,6 +35,13 @@ _AUDITABLE_BEAR_FLAGS: tuple[str, ...] = (
     "use_rsi_oversold_exit",
     "use_ema_reclaim_exit",
     "use_funding_exit",
+    "use_ema_above_exit",
+    "use_vwap_exit",
+    "use_vwma_exit",
+    "use_engulfing_exit",
+    "use_hammer_exit",
+    "use_bb_mean_reversion_exit",
+    "use_atr_reversal_exit",
     "use_vbt_sl",
     "use_vbt_sl_trail",
 )
@@ -86,6 +94,14 @@ class BearGridConfig:
             "use_rsi_oversold_exit": (False, True),
             "use_ema_reclaim_exit":  (False, True),
             "use_funding_exit":      (False, True),
+            # New indicator exits (off by default in the base grid)
+            "use_ema_above_exit":    (False,),
+            "use_vwap_exit":         (False,),
+            "use_vwma_exit":         (False,),
+            "use_engulfing_exit":    (False,),
+            "use_hammer_exit":       (False,),
+            "use_bb_mean_reversion_exit": (False,),
+            "use_atr_reversal_exit": (False,),
             # VBT-native trailing stop (off by default in the base grid)
             "use_vbt_sl":            (False,),
             "use_vbt_sl_trail":      (False,),
@@ -106,6 +122,9 @@ class BearGridConfig:
     macd_fast_range:           tuple[int, ...]   = (12,)
     macd_slow_range:           tuple[int, ...]   = (26,)
 
+    # Trigger numeric params
+    vp_price_bins_range:        tuple[int, ...] = (50,)
+
     # Regime numeric params
     rsi_lower_range:            tuple[float, ...] = (30.0,)
     rsi_upper_range:            tuple[float, ...] = (50.0,)
@@ -116,9 +135,19 @@ class BearGridConfig:
     sl_n_atr_trail_range:     tuple[float, ...] = (0.5,)
     sl_swing_lookback_range:  tuple[int, ...]   = (10,)
 
-    # Entry throttle (1 = every signal, 2 = every 2nd signal, …)
-    entry_every_n_range: tuple[int, ...] = (1,)
-    entry_phase_range:   tuple[int, ...] = (1,)
+    # New exit indicator numeric params
+    ema_above_period_range:   tuple[int, ...]   = (20,)
+    vwap_anchor_hours_range:  tuple[int, ...]   = (24,)
+    vwma_period_range:        tuple[int, ...]   = (20,)
+    engulfing_ratio_range:    tuple[float, ...] = (1.0,)
+    hammer_wick_ratio_range:  tuple[float, ...] = (2.0,)
+    bb_period_range:          tuple[int, ...]   = (20,)
+    bb_num_std_range:         tuple[float, ...] = (2.0,)
+    atr_reversal_mult_range:  tuple[float, ...] = (1.5,)
+    atr_reversal_period_range: tuple[int, ...] = (14,)
+
+    # Entry throttle: regime-aware starting position (1 = 1st trigger, 2 = 2nd, …)
+    entry_regime_offset_range: tuple[int, ...] = (2,)
 
     # --- Exclusive mode ---
     trigger_exclusive: bool = False   # test each trigger alone
@@ -154,6 +183,7 @@ class BearGridConfig:
             ("sl_mult_range",             "stop_atr_mult"),
             ("tp_mult_range",             "target_atr_mult"),
             ("atr_period_range",          "atr_period"),
+            ("vp_price_bins_range",       "vp_price_bins"),
             ("exit_rsi_level_range",      "exit_rsi_level"),
             ("rsi_oversold_level_range",  "rsi_oversold_level"),
             ("exit_ema_period_range",     "exit_ema_period"),
@@ -165,8 +195,16 @@ class BearGridConfig:
             ("sl_n_atr_init_range",       "sl_n_atr_init"),
             ("sl_n_atr_trail_range",      "sl_n_atr_trail"),
             ("sl_swing_lookback_range",   "sl_swing_lookback"),
-            ("entry_every_n_range",       "entry_every_n"),
-            ("entry_phase_range",         "entry_phase"),
+            ("ema_above_period_range",    "ema_above_period"),
+            ("vwap_anchor_hours_range",   "vwap_anchor_hours"),
+            ("vwma_period_range",         "vwma_period"),
+            ("engulfing_ratio_range",     "engulfing_ratio"),
+            ("hammer_wick_ratio_range",   "hammer_wick_ratio"),
+            ("bb_period_range",           "bb_period"),
+            ("bb_num_std_range",          "bb_num_std"),
+            ("atr_reversal_mult_range",   "atr_reversal_mult"),
+            ("atr_reversal_period_range", "atr_reversal_period"),
+            ("entry_regime_offset_range", "entry_regime_offset"),
         ))
 
     # ------------------------------------------------------------------
@@ -288,6 +326,7 @@ class BearGridConfig:
         when use_rsi_exit=False, so they collapse to the same deduped combo.
         """
         return {
+            "vp_price_bins":      ("use_vp_trigger",),
             "exit_rsi_level":     ("use_rsi_exit",),
             "rsi_oversold_level": ("use_rsi_oversold_exit",),
             "exit_ema_period":    ("use_ema_reclaim_exit",),
@@ -301,4 +340,14 @@ class BearGridConfig:
             # (trail works on top of either SL mode, so depends only on trail flag)
             "sl_n_atr_trail":     ("use_vbt_sl_trail",),
             "sl_swing_lookback":  ("use_vbt_sl_trail",),
+            # New exit numeric params — irrelevant when their exit is off
+            "ema_above_period":   ("use_ema_above_exit",),
+            "vwap_anchor_hours":  ("use_vwap_exit",),
+            "vwma_period":        ("use_vwma_exit",),
+            "engulfing_ratio":    ("use_engulfing_exit",),
+            "hammer_wick_ratio":  ("use_hammer_exit",),
+            "bb_period":          ("use_bb_mean_reversion_exit",),
+            "bb_num_std":         ("use_bb_mean_reversion_exit",),
+            "atr_reversal_mult":  ("use_atr_reversal_exit",),
+            "atr_reversal_period": ("use_atr_reversal_exit",),
         }

@@ -40,6 +40,19 @@ fill_at_next_open=True shifts arrays +1 so VBT fills at open[N+1].
 sl_stop / tp_stop are also shifted so the ATR from signal bar N
 governs the exit levels (consistent with the backtesting.py engine).
 
+ENTRY THROTTLE  (regime-aware, always active)
+---------------------------------------------
+The first trigger in each new regime window is skipped.
+A new window begins each time the regime filter (daily RSI bear zone +
+funding guard) transitions False→True.  When regime turns False the
+counter resets so the next window starts fresh.
+
+  Regime:   F F F T T T T F F T T T T T ...
+  Trigger:      .   1 . 2 .   . 1 . 2 3 ...
+  Entry:        .   - . ✓ .   . - . ✓ ✓ ...
+
+The first trigger in each window (marked -) is discarded.
+
 EXIT MODEL  (flag-driven OR logic)
 ----------
 VBT sl_stop / tp_stop are fractions relative to the actual fill price:
@@ -68,23 +81,48 @@ import pandas as pd
 from bear_strategy.strategy.parameters import Parameters
 from bear_strategy.strategy.signals import compute_atr
 
-from bear_strategy.backtest.vectorbt.entry import build_entry_signal
+from bear_strategy.backtest.vectorbt.entry.regime import compute_regime_filter
+from bear_strategy.backtest.vectorbt.entry.triggers import TRIGGER_REGISTRY
 from bear_strategy.backtest.vectorbt.exits import build_exit_signal
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# VBT-specific helper (not an indicator — throttling is a sampling concern)
+# Regime-aware entry throttle
 # ─────────────────────────────────────────────────────────────────────────────
 
-def _apply_entry_throttle(signal: pd.Series, every_n: int, phase: int) -> pd.Series:
-    if every_n <= 1:
-        return signal.fillna(False).astype(bool)
-    if phase < 1 or phase > every_n:
-        phase = 1
-    sig = signal.fillna(False).astype(bool)
-    hit_count = sig.cumsum()
-    keep = sig & (((hit_count - phase) % every_n) == 0)
-    return keep.astype(bool)
+def _apply_regime_aware_throttle(
+    trigger: pd.Series,
+    regime: pd.Series,
+    entry_offset: int = 2,
+) -> pd.Series:
+    """Start from the Nth trigger in each regime window; take all subsequent.
+
+    A new window starts each time regime transitions False→True.
+    Triggers before position N in that window are skipped (N=2 by default).
+    When regime turns False the counter resets, so the next regime window
+    starts fresh from zero.
+
+    Args:
+        trigger:      Boolean Series (True = signal fired)
+        regime:       Boolean Series (True = regime active)
+        entry_offset: Starting position (1=1st, 2=2nd, etc.)
+                      Default 2 skips crowded entries.
+
+    Vectorised implementation (no Python loop):
+      1. Detect regime-start bars (False→True transitions) and assign
+         a monotonically incrementing window-ID to every bar.
+      2. Within each window, cumsum the active (regime & trigger) signals.
+      3. Keep only bars where cumulative count ≥ entry_offset.
+    """
+    active = trigger.astype(bool) & regime.astype(bool)
+    # Window ID increments each time regime turns ON
+    regime_bool  = regime.astype(bool)
+    regime_start = (~regime_bool.shift(1, fill_value=False)) & regime_bool
+    window_id    = regime_start.cumsum()
+    # Cumulative trigger count resets at the start of each new window
+    cum_in_window = active.groupby(window_id).cumsum()
+    return (active & (cum_in_window >= entry_offset)).astype(bool)
+
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -115,13 +153,29 @@ def build_vbt_arrays(
           sl_stop       — float Series (SL fraction relative to fill price)
           tp_stop       — float Series (TP fraction relative to fill price)
           short_size    — float Series (position size fraction of equity)
+
+    Entry throttle  (configurable via entry_regime_offset parameter)
+    ---------------------------------------------------------------
+    A new window begins each time the regime filter transitions False→True
+    (daily RSI bear zone + funding guard).  Within each window, entries
+    start from the Nth trigger (default N=2).  When regime turns False the
+    counter resets, so the next active window starts fresh.  N=1 takes all
+    triggers; N=2 skips the first (crowded); N=3+ skip more.
     """
     idx   = df_1h.index
     close = df_1h["close"].astype(float)
 
-    entry_signal = build_entry_signal(df_1h, df_1d, funding_df, params)
-    short_exits  = build_exit_signal(df_1h, df_1d, funding_df, params)
-    atr          = compute_atr(df_1h, params.atr_period)
+    # Compute regime and raw trigger signal separately so the throttle
+    # can see regime transitions independently of the combined signal.
+    regime = compute_regime_filter(df_1h, df_1d, funding_df, params)
+
+    raw_trigger = pd.Series(False, index=idx, dtype=bool)
+    for flag, fn in TRIGGER_REGISTRY.items():
+        if getattr(params, flag, False):
+            raw_trigger = raw_trigger | fn(df_1h, df_1d, funding_df, params)
+
+    short_exits = build_exit_signal(df_1h, df_1d, funding_df, params)
+    atr         = compute_atr(df_1h, params.atr_period)
 
     # SL / TP as fractions of current close price
     safe_close = close.where(close > 0, np.nan)
@@ -138,12 +192,9 @@ def build_vbt_arrays(
     min_sl_mask = sl_pct >= params.min_sl_pct
     warmup_mask = atr.notna()
 
-    short_entries = (entry_signal & warmup_mask & min_sl_mask).astype(bool)
-    short_entries = _apply_entry_throttle(
-        short_entries,
-        every_n=max(int(params.entry_every_n), 1),
-        phase=max(int(params.entry_phase), 1),
-    )
+    # Regime-aware throttle: configurable starting position in each regime window
+    throttled     = _apply_regime_aware_throttle(raw_trigger, regime, params.entry_regime_offset)
+    short_entries = (throttled & warmup_mask & min_sl_mask).astype(bool)
 
     # ── Risk-based sizing: fraction of equity = risk_pct / sl_pct ─────────────
     raw_size = (
@@ -165,3 +216,4 @@ def build_vbt_arrays(
         "tp_stop":       pd.Series(tp_pct.values,        index=idx, dtype=float),
         "short_size":    pd.Series(raw_size.values,      index=idx, dtype=float),
     }
+

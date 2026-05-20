@@ -13,13 +13,13 @@ Trigger Flags
 ----------------------------------------------------------
   FLAG                           STATUS         VALUE(S)
   ----------------------------- ------------- ------------
-  use_vp_trigger                 pinned OFF   False
+  use_vp_trigger                 pinned ON    True
 
 Exit Flags
 ----------------------------------------------------------
   FLAG                           STATUS         VALUE(S)
   ----------------------------- ------------- ------------
-  use_fixed_tp                   pinned OFF   False
+  use_fixed_tp                   pinned ON    True
   use_rsi_exit                   pinned OFF   False
   use_macd_exit                  pinned OFF   False
   use_rsi_oversold_exit          pinned OFF   False
@@ -30,11 +30,19 @@ Numeric Sweeps
 ----------------------------------------------------------
   PARAM                          STATUS         VALUE(S)
   ----------------------------- ------------- ------------
-  use_vbt_sl                     swept        False / True
-  use_vbt_sl_trail               swept        False / True
-  stop_atr_mult                  pinned       2.0
-  target_atr_mult                pinned       3.0
+  use_ema_above_exit             pinned OFF   False
+  use_vwap_exit                  pinned OFF   False
+  use_vwma_exit                  pinned OFF   False
+  use_engulfing_exit             pinned OFF   False
+  use_hammer_exit                pinned OFF   False
+  use_bb_mean_reversion_exit     pinned OFF   False
+  use_atr_reversal_exit          pinned OFF   False
+  use_vbt_sl                     pinned OFF   False
+  use_vbt_sl_trail               pinned OFF   False
+  stop_atr_mult                  swept        2.0 / 5
+  target_atr_mult                swept        5 / 6 / 7 / 8
   atr_period                     pinned       7
+  vp_price_bins                  pinned       50
   exit_rsi_level                 pinned       50.0
   rsi_oversold_level             pinned       30.0
   exit_ema_period                pinned       21
@@ -43,11 +51,19 @@ Numeric Sweeps
   rsi_lower                      pinned       30.0
   rsi_upper                      pinned       50.0
   funding_threshold              pinned       0.0
-  sl_n_atr_init                  swept        0.3 / 0.5 / 0.8
-  sl_n_atr_trail                 swept        0.3 / 0.5 / 0.8
-  sl_swing_lookback              swept        5 / 10 / 20
-  entry_every_n                  pinned       1
-  entry_phase                    pinned       1
+  sl_n_atr_init                  pinned       0.5
+  sl_n_atr_trail                 pinned       0.5
+  sl_swing_lookback              pinned       10
+  ema_above_period               pinned       20
+  vwap_anchor_hours              pinned       24
+  vwma_period                    pinned       20
+  engulfing_ratio                pinned       1.0
+  hammer_wick_ratio              pinned       2.0
+  bb_period                      pinned       20
+  bb_num_std                     pinned       2.0
+  atr_reversal_mult              pinned       1.5
+  atr_reversal_period            pinned       14
+  entry_regime_offset            pinned       2
 
-Grid size (upper bound, before validity filtering):  108 combos
+Grid size (upper bound, before validity filtering):  8 combos
 Conditions: 9 symbol(s)

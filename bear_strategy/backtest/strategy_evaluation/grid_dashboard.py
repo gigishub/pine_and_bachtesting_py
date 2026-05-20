@@ -61,7 +61,8 @@ _METRIC_COLS = [
 ]
 
 
-@st.cache_data(show_spinner=False)
+
+
 def _load(run_dir: str) -> pd.DataFrame:
     return load_run_dir(run_dir)
 
@@ -88,7 +89,7 @@ def _gradient(df: pd.DataFrame, cols: list[str]) -> "pd.io.formats.style.Styler"
             style = style.background_gradient(subset=[col], cmap="RdYlGn_r")
         else:
             style = style.background_gradient(subset=[col], cmap="RdYlGn")
-    return style.format({c: "{:.2f}" for c in available if c != "# Trades"})
+    return style.format({c: "{:.2f}" for c in available if c != "# Trades"}, na_rep="—")
 
 
 def _metric_card(col, label: str, value: str, delta: str = "") -> None:
@@ -132,12 +133,30 @@ except Exception as exc:
 df = annotate(raw_df, **gates)
 
 # Symbol filter
-all_symbols = sorted(str(s) for s in df["Symbol"].dropna().unique()) if "Symbol" in df.columns else []
-selected_symbols = st.sidebar.multiselect(
-    "Filter symbols", all_symbols, default=all_symbols
+if "Symbol" in df.columns and not df.empty:
+    all_symbols = sorted(str(s) for s in df["Symbol"].dropna().unique())
+    selected_symbols = st.sidebar.multiselect(
+        "Filter symbols",
+        all_symbols,
+        default=all_symbols,
+        # Key includes run name so switching runs resets the widget to default=all_symbols
+        key=f"sym_filter_{primary_name}",
+    )
+    filter_symbols = selected_symbols if selected_symbols else all_symbols
+    df = df[df["Symbol"].isin(filter_symbols)]
+else:
+    all_symbols = []
+
+# ── Pre-compute top-5 robustness sigs (shared across tabs) ───────────────────
+_scores_all = compute_weighted_scores(df)
+_scores_filtered = (
+    _scores_all[_scores_all["symbols_passing"] >= min_symbols]
+    if not _scores_all.empty else _scores_all
 )
-if selected_symbols:
-    df = df[df["Symbol"].isin(selected_symbols)]
+top5_sigs: list[str] = (
+    _scores_filtered["Parameter Signature"].head(10).tolist()
+    if not _scores_filtered.empty else []
+)
 
 # ══════════════════════════════════════════════════════════════════════════════
 # Tabs
@@ -153,17 +172,19 @@ tab_robust, tab_sym, tab_flags, tab_compare, tab_raw = st.tabs([
 with tab_robust:
     st.header("Weighted Robustness Scores")
     st.caption(
-        "final_score = avg_score × (symbols_passing / N_total)  "
-        "· avg_score uses SQN 30%, PF 25%, Exp 25%, Sharpe 10%, DD 10%"
+        "final_score = avg_score × √(symbols_passing / N_total)  "
+        "· avg_score uses Return 25%, PF 25%, Expectancy 20%, Sharpe 15%, SQN 10%, DD 5%  "
+        "· Breadth (symbols_passing / N_total) is how many pairs the combo passes gates on — "
+        "using √breadth rewards wide coverage but penalises it less harshly than a linear multiplier."
     )
 
-    scores_df = compute_weighted_scores(df)
+    scores_df = _scores_all
 
     if scores_df.empty:
         st.warning("No combos pass all gates across any symbols with current settings.")
     else:
         # Filter by min_symbols
-        filtered = scores_df[scores_df["symbols_passing"] >= min_symbols]
+        filtered = _scores_filtered
 
         if filtered.empty:
             st.warning(f"No combos pass gates on ≥ {min_symbols} symbols.")
@@ -191,7 +212,7 @@ with tab_robust:
             st.dataframe(
                 _gradient(display[show_cols], ["final_score", "avg_score", "breadth"])
                 .format({"final_score": "{:.4f}", "avg_score": "{:.4f}", "breadth": "{:.2%}"}),
-                use_container_width=True,
+                width="stretch",
             )
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -228,19 +249,57 @@ with tab_sym:
             st.subheader("Pass / Fail matrix")
             st.dataframe(
                 pivot.style.map(lambda v: "background-color:#1a7a3b;color:white" if v else "background-color:#8b1a1a;color:white"),
-                use_container_width=True,
+                width="stretch",
             )
 
             st.divider()
-            chosen_sig = st.selectbox("Inspect combo metrics", sig_pool)
-            combo_df = df[df["Parameter Signature"] == chosen_sig][
-                ["Symbol"] + [c for c in _METRIC_COLS if c in df.columns] + ["_passes", "_score"]
-            ].sort_values("Symbol")
+            inspect_pool = [s for s in top5_sigs if s in sig_pool] or sig_pool[:10]
+            if not inspect_pool:
+                st.info("No top-10 combos available with current gates.")
+            else:
+                metric_cols_present = [c for c in _METRIC_COLS if c in df.columns]
+                # Ranked labels: "#1 short_label", "#2 short_label", …
+                ranked_labels = [
+                    f"#{i + 1}  {sig_short_label(s)}" for i, s in enumerate(inspect_pool)
+                ]
+                label_to_sig = dict(zip(ranked_labels, inspect_pool))
 
-            st.dataframe(
-                _gradient(combo_df, _METRIC_COLS),
-                use_container_width=True,
-            )
+                def _combo_panel(panel_index: int) -> None:
+                    """Render one combo inspector panel."""
+                    default_idx = min(panel_index, len(ranked_labels) - 1)
+                    chosen_label = st.selectbox(
+                        f"Combo {panel_index + 1} — Inspect metrics (top-10 robustness)",
+                        ranked_labels,
+                        index=default_idx,
+                        key=f"inspect_combo_{panel_index}",
+                    )
+                    chosen_sig = label_to_sig[chosen_label]
+                    combo_df = df[df["Parameter Signature"] == chosen_sig][
+                        ["Symbol"] + metric_cols_present + ["_passes", "_score"]
+                    ].sort_values("Symbol")
+
+                    passing_rows = combo_df[combo_df["_passes"]]
+                    if not passing_rows.empty:
+                        avg_vals = passing_rows[metric_cols_present + ["_score"]].mean()
+                        avg_row: dict = {"Symbol": "── avg (passing) ──", "_passes": "—"}
+                        avg_row.update(avg_vals.to_dict())
+                        combo_df = pd.concat(
+                            [combo_df, pd.DataFrame([avg_row])], ignore_index=True
+                        )
+
+                    st.dataframe(_gradient(combo_df, _METRIC_COLS), width="stretch")
+
+                    if not passing_rows.empty:
+                        passing_syms = sorted(
+                            passing_rows["Symbol"].dropna().unique().tolist()
+                        )
+                        st.caption("Passing symbols — copy for OOS test:")
+                        st.code(str(passing_syms), language="python")
+
+                for panel_idx in range(4):
+                    _combo_panel(panel_idx)
+                    if panel_idx < 3:
+                        st.divider()
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Tab 3: Exit Flags
@@ -286,7 +345,7 @@ with tab_flags:
                     range_color=[0, 1],
                 )
                 fig.update_layout(coloraxis_showscale=False, height=360)
-                st.plotly_chart(fig, use_container_width=True)
+                st.plotly_chart(fig, width="stretch")
 
         # Right: flag × signature heatmap
         with col_r:
@@ -314,7 +373,7 @@ with tab_flags:
                     zmin=0, zmax=1, aspect="auto",
                 )
                 fig2.update_layout(height=420)
-                st.plotly_chart(fig2, use_container_width=True)
+                st.plotly_chart(fig2, width="stretch")
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Tab 4: Compare
@@ -357,7 +416,7 @@ with tab_compare:
                 else:
                     st.dataframe(
                         sc_prim[["short_label","final_score","avg_score","symbols_passing"]],
-                        use_container_width=True,
+                        width="stretch",
                     )
             with col_b:
                 st.subheader(f"🏆 {compare_name}")
@@ -366,7 +425,7 @@ with tab_compare:
                 else:
                     st.dataframe(
                         sc_cmp[["short_label","final_score","avg_score","symbols_passing"]],
-                        use_container_width=True,
+                        width="stretch",
                     )
 
             # Shared signatures
@@ -374,19 +433,24 @@ with tab_compare:
             if not sc_prim.empty and not sc_cmp.empty:
                 shared = set(sc_prim["Parameter Signature"]) & set(sc_cmp["Parameter Signature"])
                 if shared:
+                    # Use stable column names to avoid collisions when names share a 20-char prefix
+                    prim_col = f"score_{primary_name}"
+                    cmp_col  = f"score_{compare_name}"
+                    if prim_col == cmp_col:
+                        prim_col, cmp_col = "score_primary", "score_compare"
                     merged = (
                         sc_prim[sc_prim["Parameter Signature"].isin(shared)]
                         [["Parameter Signature","short_label","final_score"]]
-                        .rename(columns={"final_score": f"score_{primary_name[:20]}"})
+                        .rename(columns={"final_score": prim_col})
                         .merge(
                             sc_cmp[sc_cmp["Parameter Signature"].isin(shared)]
                             [["Parameter Signature","final_score"]]
-                            .rename(columns={"final_score": f"score_{compare_name[:20]}"}),
+                            .rename(columns={"final_score": cmp_col}),
                             on="Parameter Signature",
                         )
-                        .sort_values(f"score_{primary_name[:20]}", ascending=False)
+                        .sort_values(prim_col, ascending=False)
                     )
-                    st.dataframe(merged, use_container_width=True)
+                    st.dataframe(merged, width="stretch")
                 else:
                     st.info("No signatures in common between the two runs' top-10.")
 
@@ -410,7 +474,7 @@ with tab_raw:
     st.write(f"**{len(view_df):,}** rows")
     st.dataframe(
         _gradient(view_df[show_cols_raw], metric_filter_cols),
-        use_container_width=True,
+        width="stretch",
     )
 
     csv_bytes = view_df[show_cols_raw].to_csv(index=False).encode()

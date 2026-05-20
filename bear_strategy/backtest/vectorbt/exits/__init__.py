@@ -5,11 +5,18 @@ The EXIT_REGISTRY maps the Parameters flag name to its compute function.
 
 Available exits
 ---------------
-  use_rsi_exit            rsi_exit.py         Daily RSI crosses above exit level
-  use_macd_exit           macd_exit.py        1h MACD histogram negative → ≥ 0
-  use_rsi_oversold_exit   rsi_oversold_exit.py 1h RSI drops below oversold level
-  use_ema_reclaim_exit    ema_reclaim_exit.py  1h close reclaims EMA (cross up)
-  use_funding_exit        funding_exit.py      Smoothed funding drops ≤ threshold
+  use_rsi_exit            rsi_exit.py            Daily RSI crosses above exit level
+  use_macd_exit           macd_exit.py           1h MACD histogram negative → ≥ 0
+  use_rsi_oversold_exit   rsi_oversold_exit.py   1h RSI drops below oversold level
+  use_ema_reclaim_exit    ema_reclaim_exit.py    1h close reclaims EMA (cross up)
+  use_funding_exit        funding_exit.py        Smoothed funding drops ≤ threshold
+  use_ema_above_exit      ema_above_exit.py      1h close above EMA(ema_above_period)
+  use_vwap_exit           vwap_exit.py           1h close above anchor-period VWAP
+  use_vwma_exit           vwma_exit.py           1h close above VWMA(vwma_period)
+  use_engulfing_exit      engulfing_exit.py      Bullish engulfing candle on 1h
+  use_hammer_exit         hammer_exit.py         Hammer candle on 1h
+  use_bb_mean_reversion_exit  bb_mean_reversion_exit.py  BB mean reversion (price return)
+  use_atr_reversal_exit   atr_reversal_exit.py   ATR reversal (vol compression)
 
 Adding a new exit
 -----------------
@@ -22,9 +29,10 @@ Adding a new exit
 4.  Add the flag to BearGridConfig.boolean_filter_ranges
     in bear_strategy/backtest/vectorbt/bear_grid_config.py.
 5.  Add the flag to _AUDITABLE_BEAR_FLAGS in bear_grid_config.py.
+6.  Add the flag to _EXIT_FLAGS in pipeline.py.
 
 Removing / disabling an exit
------------------------------
+------------------------------
   - Temporary: set boolean_filter_ranges["use_<name>_exit"] = (False,) in the
     grid config — it is pinned off and never enters the grid.
   - Permanent: delete the exit file and remove it from EXIT_REGISTRY.
@@ -39,11 +47,18 @@ import pandas as pd
 from bear_strategy.strategy.parameters import Parameters
 
 from . import (
+    atr_reversal_exit,
+    bb_mean_reversion_exit,
+    ema_above_exit,
     ema_reclaim_exit,
+    engulfing_exit,
     funding_exit,
+    hammer_exit,
     macd_exit,
     rsi_exit,
     rsi_oversold_exit,
+    vwap_exit,
+    vwma_exit,
 )
 
 # ── Type alias ────────────────────────────────────────────────────────────────
@@ -56,11 +71,18 @@ ExitFn = Callable[
 # ── Registry — maps Parameters flag → exit compute function ──────────────────
 
 EXIT_REGISTRY: dict[str, ExitFn] = {
-    rsi_exit.FLAG:          rsi_exit.compute,
-    macd_exit.FLAG:         macd_exit.compute,
-    rsi_oversold_exit.FLAG: rsi_oversold_exit.compute,
-    ema_reclaim_exit.FLAG:  ema_reclaim_exit.compute,
-    funding_exit.FLAG:      funding_exit.compute,
+    rsi_exit.FLAG:              rsi_exit.compute,
+    macd_exit.FLAG:             macd_exit.compute,
+    rsi_oversold_exit.FLAG:     rsi_oversold_exit.compute,
+    ema_reclaim_exit.FLAG:      ema_reclaim_exit.compute,
+    funding_exit.FLAG:          funding_exit.compute,
+    ema_above_exit.FLAG:        ema_above_exit.compute,
+    vwap_exit.FLAG:             vwap_exit.compute,
+    vwma_exit.FLAG:             vwma_exit.compute,
+    engulfing_exit.FLAG:        engulfing_exit.compute,
+    hammer_exit.FLAG:           hammer_exit.compute,
+    bb_mean_reversion_exit.FLAG: bb_mean_reversion_exit.compute,
+    atr_reversal_exit.FLAG:     atr_reversal_exit.compute,
 }
 
 

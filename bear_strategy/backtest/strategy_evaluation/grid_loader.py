@@ -56,6 +56,12 @@ def load_run_dir(run_dir: str | Path) -> pd.DataFrame:
     for path in sorted(csv_files):
         try:
             df = pd.read_csv(path)
+            # Strip surrounding whitespace from column names (some CSVs have padded headers)
+            df.columns = df.columns.str.strip()
+            # Strip string values in key columns so symbol names are clean
+            for col in ("Symbol", "Parameter Signature", "Condition"):
+                if col in df.columns:
+                    df[col] = df[col].astype(str).str.strip()
             if not df.empty:
                 frames.append(df)
         except Exception:
@@ -93,7 +99,12 @@ def detect_toggle_cols(df: pd.DataFrame) -> list[str]:
     for col in df.columns:
         if not col.startswith("use_"):
             continue
-        uniq = set(df[col].dropna().astype(float).unique())
+        # Values may be strings like ' True' / ' False' / ' 1' due to padded CSVs
+        raw = df[col].dropna().astype(str).str.strip().str.lower()
+        mapped = raw.map({"true": 1.0, "false": 0.0, "1": 1.0, "0": 0.0, "1.0": 1.0, "0.0": 0.0})
+        if mapped.isna().any():
+            continue  # not a binary toggle column
+        uniq = set(mapped.unique())
         if uniq.issubset({0.0, 1.0}):
             result.append(col)
     return result

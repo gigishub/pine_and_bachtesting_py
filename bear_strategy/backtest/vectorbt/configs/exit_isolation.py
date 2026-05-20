@@ -26,6 +26,7 @@ def build_config():
     return dataclasses.replace(
         _base(),
         boolean_filter_ranges={
+            "use_ema_200_regime":          (False,),  # pinned OFF — not part of this config
             "use_vp_trigger":        (True,),
             # Sweep these 4 exit conditions — all combinations are valid
             # because the hard SL always closes the trade as a backstop.
@@ -35,6 +36,13 @@ def build_config():
             "use_rsi_oversold_exit": (False, True),
             "use_ema_reclaim_exit":  (False,),
             "use_funding_exit":      (False,),
+            "use_ema_above_exit":    (False, True),
+            "use_vwap_exit":         (False, True),
+            "use_vwma_exit":         (False, True),
+            "use_engulfing_exit":    (False, True),
+            "use_hammer_exit":       (False, True),
+            "use_bb_mean_reversion_exit": (False, True),
+            "use_atr_reversal_exit": (False, True),
             "use_vbt_sl":            (False,),
             "use_vbt_sl_trail":      (False, True),
         },

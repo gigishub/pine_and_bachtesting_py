@@ -1,15 +1,10 @@
 """Bear Strategy — entry trigger throttle config.
 
-Tests whether acting only on every Nth entry signal (default: 2nd) improves
-performance by skipping signals in the middle of crowded zones.
+NOTE: The entry throttle is now regime-aware and always active.
+Use entry_regime_offset to control which trigger in each new regime
+window is the first to enter (1 = take all, 2 = skip 1st, 3 = skip first 2, …).
 
-Parameters swept:
-  - entry_every_n: 1 (every signal) vs 2 (every 2nd signal)
-  - entry_phase:   1 (1st, 3rd, 5th…) vs 2 (2nd, 4th, 6th…)
-    Varying phase shows whether the 1st or 2nd occurrence is more reliable.
-
-Exits are kept at the default (only use_fixed_tp pinned on) to isolate the
-entry throttle effect cleanly.
+This config sweeps entry_regime_offset to compare throttle positions.
 
 Run:
     python -m bear_strategy.backtest.vectorbt.run_grid --config trigger_throttle
@@ -27,12 +22,21 @@ def build_config():
     return dataclasses.replace(
         _base(),
         # ===== BOOLEAN FLAGS: trigger + exit on/off toggles =====
+        symbols= [
+                "AAVEUSDT", "ADAUSDT",  "ALGOUSDT", "ATOMUSDT", "AVAXUSDT",
+                "BATUSDT",  "BCHUSDT",  "BNBUSDT",  "BTCUSDT",  "DOGEUSDT",
+                "DOTUSDT",  "ETHUSDT",  "LINKUSDT", "LTCUSDT",  "NEARUSDT",
+                "SOLUSDT",  "TRXUSDT",  "UNIUSDT",  "XLMUSDT",  "XMRUSDT",
+                "XRPUSDT",  "ZECUSDT",
+            ],
+
         boolean_filter_ranges={
+            "use_ema_200_regime":          (False,),  # pinned OFF — not part of this config
             # TRIGGER
             "use_vp_trigger":        (True,),
             
             # EXITS
-            "use_fixed_tp":          (False,),        # Fixed take profit (off)
+            "use_fixed_tp":          (True,),        # Fixed take profit (off)
             "use_rsi_exit":          (False,),        # RSI-based exit (off)
             # "use_rsi_exit":        (False, True),   # Uncomment to sweep: off vs on
             "use_macd_exit":         (False,),        # MACD exit signal (off)
@@ -43,19 +47,26 @@ def build_config():
             # "use_ema_reclaim_exit": (False, True),  # Uncomment to sweep: off vs on
             "use_funding_exit":      (False,),        # Funding rate exit (off)
             # "use_funding_exit":    (False, True),   # Uncomment to sweep: off vs on
+            "use_ema_above_exit":    (False,),
+            "use_vwap_exit":         (False,),
+            "use_vwma_exit":         (False,),
+            "use_engulfing_exit":    (False,),
+            "use_hammer_exit":       (False,),
+            "use_bb_mean_reversion_exit": (False,),
+            "use_atr_reversal_exit": (False,),
             
             # VBT-NATIVE STOP LOSS (only used when True)
-            "use_vbt_sl":            (False, True),      # Fixed VBT stop loss (off)
+            "use_vbt_sl":            (False, ),      # Fixed VBT stop loss (off)
             # "use_vbt_sl":          (False, True),   # Uncomment to sweep: off vs on
-            "use_vbt_sl_trail":      (False, True),   # VBT trailing stop (off)
+            "use_vbt_sl_trail":      (False, ),   # VBT trailing stop (off)
             # "use_vbt_sl_trail":    (False, True),   # Uncomment to sweep: off vs on
         },
         
         # ===== NUMERIC SWEEPS: Stop / Target =====
         # When use_vbt_sl=False (currently): these multipliers define stop & target
         # When use_vbt_sl=True: ignore these; use sl_n_atr_init_range instead
-        sl_mult_range=(2.0, 2.5, 3.0),               # Stop loss = ATR × this value
-        # tp_mult_range=(2.0, 3.0, 4.0),               # Take profit = ATR × this value
+        sl_mult_range=(2.0, 2.5, 3.0,4,5),               # Stop loss = ATR × this value
+        tp_mult_range=(2.0, 3.0, 4.0,5,6),               # Take profit = ATR × this value
         # atr_period_range=(7,),                     # ATR lookback period (currently 7)
         
         # ===== EXIT INDICATOR NUMERIC PARAMS (only active when respective exit is on) =====
@@ -77,11 +88,9 @@ def build_config():
         # sl_n_atr_trail_range=(1, 1.5, 2),          # Trailing ATR width for VBT stop (inactive now)
         # sl_swing_lookback_range=(10,),             # Lookback for swing stop (inactive now)
         
-        # ===== ENTRY THROTTLE: skip every Nth signal =====
-        # Core sweep: 1st-vs-2nd signal
-        entry_every_n_range=(1, 2),                  # 1=every signal, 2=every 2nd signal
-        # entry_phase_range=(1, 2),                    # 1=odd signals, 2=even signals
+        # ===== ENTRY THROTTLE: regime-aware offset =====
+        entry_regime_offset_range=(1, 2, 3, 4),      # 1=all triggers, 2=skip 1st, …
         
         # ===== OUTPUT =====
-        output_dir=Path("bear_strategy/backtest/vectorbt/results/trigger_throttle"),
+        output_dir=Path("bear_strategy/backtest/vectorbt/results/trigger_throttle_2"),
     )

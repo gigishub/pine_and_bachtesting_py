@@ -23,6 +23,7 @@ def build_config():
     return dataclasses.replace(
         _base(),
         boolean_filter_ranges={
+            "use_ema_200_regime":          (False,),  # pinned OFF — not part of this config
             "use_vp_trigger":        (True,),
             "use_fixed_tp":          (True,),   # simple exit to isolate regime signal
             "use_rsi_exit":          (False,),
@@ -30,6 +31,13 @@ def build_config():
             "use_rsi_oversold_exit": (False,),
             "use_ema_reclaim_exit":  (False,),
             "use_funding_exit":      (False,),
+            "use_ema_above_exit":    (False,),
+            "use_vwap_exit":         (False,),
+            "use_vwma_exit":         (False,),
+            "use_engulfing_exit":    (False,),
+            "use_hammer_exit":       (False,),
+            "use_bb_mean_reversion_exit": (False,),
+            "use_atr_reversal_exit": (False,),
             "use_vbt_sl":            (False,),
             "use_vbt_sl_trail":      (False,),
         },

@@ -46,6 +46,9 @@ logger = logging.getLogger(__name__)
 _TRIGGER_FLAGS = ("use_vp_trigger",)
 _EXIT_FLAGS    = ("use_fixed_tp", "use_rsi_exit", "use_macd_exit",
                   "use_rsi_oversold_exit", "use_ema_reclaim_exit", "use_funding_exit",
+                  "use_ema_above_exit", "use_vwap_exit", "use_vwma_exit",
+                  "use_engulfing_exit", "use_hammer_exit",
+                  "use_bb_mean_reversion_exit", "use_atr_reversal_exit",
                   "use_vbt_sl_trail")   # trailing SL alone is a valid exit
 
 _EXCLUSIVE_LAYER_MAP: dict[str, tuple[str, ...]] = {
