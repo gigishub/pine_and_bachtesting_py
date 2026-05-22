@@ -268,3 +268,23 @@ class BybitV5Client:
                 if c.get("coin") == coin:
                     return float(c.get("availableToWithdraw") or c.get("walletBalance") or 0)
         return 0.0
+
+    def get_funding_rate_history(
+        self,
+        *,
+        category: str,
+        symbol: str,
+        limit: int = 50,
+    ) -> list[dict[str, Any]]:
+        """Return recent funding rate settlement records for *symbol*.
+
+        Each record has keys: ``symbol``, ``fundingRate``, ``fundingRateTimestamp``.
+        Results are reverse-chronological (newest first); caller should sort by
+        timestamp before use.
+        """
+        data = self._request(
+            "GET",
+            "/v5/market/funding/history",
+            params={"category": category, "symbol": symbol, "limit": limit},
+        )
+        return data.get("result", {}).get("list", [])

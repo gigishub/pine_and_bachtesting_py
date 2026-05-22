@@ -1,0 +1,12 @@
+Bear Strategy Live Runner — Runtime Status
+Generated: 2026-05-22 10:20:56 UTC
+
+RUN_NAME                  STATE      SUPERVISOR   CHILD      LAST_FINISHED         
+--------                  -----      ----------   -----      -------------         
+ATOM_1h                   stopped    -            -          -                     
+AVAX_1h                   stopped    -            -          -                     
+NEAR_1h                   stopped    -            -          -                     
+XLM_1h                    stopped    -            -          -                     
+
+Wanted on reboot:
+- (none)

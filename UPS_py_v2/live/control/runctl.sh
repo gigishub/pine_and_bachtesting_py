@@ -6,7 +6,12 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(cd "$SCRIPT_DIR/../../.." && pwd)"
-VENV_ACTIVATE="/root/.venv/bin/activate"
+# Prefer venv inside the project; fall back to /root/.venv (legacy Ubuntu layout)
+if [[ -f "$PROJECT_DIR/.venv/bin/activate" ]]; then
+  VENV_ACTIVATE="$PROJECT_DIR/.venv/bin/activate"
+else
+  VENV_ACTIVATE="/root/.venv/bin/activate"
+fi
 
 REGISTRY_DIR="$SCRIPT_DIR/registry"
 ACTIVE_DIR="$REGISTRY_DIR/active"
@@ -111,7 +116,7 @@ profile_command() {
     exit 1
   fi
 
-  printf '%s' "cd $PROJECT_DIR && source $VENV_ACTIVATE && set -a && source $profile_file && set +a && python -m UPS_py_v2.live.ups_live_runner"
+  printf '%s' "cd \"$PROJECT_DIR\" && source \"$VENV_ACTIVATE\" && set -a && source \"$profile_file\" && set +a && python -m UPS_py_v2.live.ups_live_runner"
 }
 
 cmd_profile_save() {
@@ -180,7 +185,7 @@ cmd_profile_show() {
 }
 
 cmd_profile_list() {
-  find "$PROFILES_DIR" -maxdepth 1 -type f -name '*.env' -printf '%f\n' | sed 's/\.env$//' | sort
+find "$PROFILES_DIR" -maxdepth 1 -type f -name '*.env' | sed 's|.*/||; s/\.env$//' | sort
 }
 
 cmd_profile_start() {
@@ -216,7 +221,7 @@ cmd_profile_start() {
 }
 
 wanted_runs_list() {
-  sed -E 's/^\s*-\s*//; s/^\s+//; s/\s+$//' "$WANTED_RUNS_FILE" \
+  sed -E 's/^[[:space:]]*-[[:space:]]*//; s/^[[:space:]]+//; s/[[:space:]]+$//' "$WANTED_RUNS_FILE" \
     | sed '/^$/d; /^#/d' \
     | sort -u
 }
@@ -235,7 +240,7 @@ remove_wanted_run() {
   tmp="$(mktemp)"
   while IFS= read -r raw; do
     local cleaned
-    cleaned="$(printf '%s' "$raw" | sed -E 's/^\s*-\s*//; s/^\s+//; s/\s+$//')"
+    cleaned="$(printf '%s' "$raw" | sed -E 's/^[[:space:]]*-[[:space:]]*//; s/^[[:space:]]+//; s/[[:space:]]+$//')"
     if [[ "$cleaned" == "$run_name" ]]; then
       continue
     fi
@@ -252,7 +257,7 @@ write_config() {
   local cmd="$5"
 
   local cmd_b64
-  cmd_b64="$(printf '%s' "$cmd" | base64 -w0)"
+  cmd_b64="$(printf '%s' "$cmd" | base64 | tr -d '\n')"
 
   cat > "$CONFIGS_DIR/${run_name}.conf" <<EOF
 RUN_NAME="$run_name"
@@ -313,7 +318,7 @@ start_supervisor() {
     current_child=""
     restarts_done=0
 
-    trap 'if [[ -n "$current_child" ]] && ps -p "$current_child" > /dev/null 2>&1; then kill -TERM "$current_child" || true; wait "$current_child" || true; fi; rm -f "'$supervisor_pid_file'" "'$child_pid_file'"; exit 0' SIGINT SIGTERM
+    trap 'if [[ -n "$current_child" ]] && ps -p "$current_child" > /dev/null 2>&1; then kill -TERM "$current_child" || true; wait "$current_child" || true; fi; rm -f "$supervisor_pid_file" "$child_pid_file"; exit 0' SIGINT SIGTERM
 
     while true; do
       local_run_id="$(run_id_now)"
@@ -330,7 +335,7 @@ start_supervisor() {
         echo "AUTO_RESTART=$auto_restart"
         echo "RESTART_DELAY=$restart_delay"
         echo "MAX_RESTARTS=$max_restarts"
-        echo "COMMAND_B64=$(printf '%s' "$cmd" | base64 -w0)"
+        echo "COMMAND_B64=$(printf '%s' "$cmd" | base64 | tr -d '\n')"
       } > "$local_meta"
 
       bash -lc "$cmd" >> "$local_log_file" 2>&1 &
@@ -367,6 +372,7 @@ start_supervisor() {
   ) &
 
   local spid=$!
+  disown "$spid"
   echo "$spid" > "$supervisor_pid_file"
   chmod 644 "$supervisor_pid_file"
 
@@ -434,7 +440,7 @@ last_finished_attempt() {
     return
   fi
   local lf
-  lf="$(find "$INACTIVE_DIR/$run_name" -mindepth 1 -maxdepth 1 -type d -printf '%f\n' | sort | tail -n 1 || true)"
+  lf="$(find "$INACTIVE_DIR/$run_name" -mindepth 1 -maxdepth 1 -type d | sed 's|.*/||' | sort | tail -n 1 || true)"
   [[ -n "$lf" ]] && echo "$lf" || echo "-"
 }
 
@@ -449,7 +455,7 @@ status_table() {
     local names=()
     while IFS= read -r n; do
       [[ -n "$n" ]] && names+=("$n")
-    done < <(find "$CONFIGS_DIR" -maxdepth 1 -type f -name '*.conf' -printf '%f\n' | sed 's/\.conf$//' | sort)
+    done < <(find "$CONFIGS_DIR" -maxdepth 1 -type f -name '*.conf' | sed 's|.*/||; s/\.conf$//' | sort)
 
     if [[ ${#names[@]} -eq 0 ]]; then
       echo "(no configured runs)"
@@ -677,11 +683,7 @@ main() {
       fi
       local run_name="$1"
       shift
-      local disable_after_stop="no"
-      if [[ "${1:-}" == "--disable" ]]; then
-        disable_after_stop="yes"
-      fi
-      stop_run "$run_name" "$disable_after_stop"
+      stop_run "$run_name" "yes"
       status_table > /dev/null
       ;;
     restart)

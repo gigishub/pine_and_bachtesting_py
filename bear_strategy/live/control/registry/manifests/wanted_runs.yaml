@@ -1,0 +1,5 @@
+# Desired runs that should be resurrected on reboot.
+# One run name per line, either plain or YAML-list style.
+# Example:
+# - NEAR_1h
+# - ATOM_1h

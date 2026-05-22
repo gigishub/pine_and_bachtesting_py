@@ -1,13 +1,8 @@
-backtesting
 pandas
 numpy
 python-dotenv
 requests
-websocket-client
 pytest
 vectorbt
-shap
-statsmodels
-scikit-learn
 streamlit
 plotly
