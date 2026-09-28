@@ -28,10 +28,11 @@ A clear "no" is a valid result.
 
 ## Milestones
 - [x] M1 — Edge check engine + sanity checks (shuffled future = no edge; known answers)
-- [ ] M2 — Regime layer (BTC-level), long and short separately
-- [ ] M3 — Setup layer (coin-level trend) on top of the promoted regime
-- [ ] M4 — Frozen stack on validation, then test once
+- [x] M2 — Regime layer (BTC-level), long and short separately
+- [x] M3 — Setup layer (coin-level trend) on top of the promoted regime
+- [x] M4 — Frozen stack on validation, then test once
 - [ ] M5 — Full backtest with fees + funding vs benchmarks (only if M4 passes)
+  - **Status:** M4 failed (see VERIFICATION_PHASE_A, Holdout). M5 skipped unless we decide otherwise at a checkpoint.
 
 ## Open / deferred
 - 4h candles (only if the short side shows an edge on 1d).

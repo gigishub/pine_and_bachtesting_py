@@ -37,6 +37,8 @@ def build(universe_n: int = UNIVERSE_N) -> dict:
     listed = c.notna().cumsum()
     liq = v.rolling(180, min_periods=120).median().where(c.notna() & (listed >= MIN_LISTED))
     universe = liq.rank(axis=1, ascending=False, method="first") <= universe_n
+    keep = universe.columns[universe.any()]
+    o, c, v, universe = o[keep], c[keep], v[keep], universe[keep]
     last_close = c.ffill()
     entry = o.shift(-1)
     last_day = c.index[-1]
