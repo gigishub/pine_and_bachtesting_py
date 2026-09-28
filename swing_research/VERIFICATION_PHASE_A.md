@@ -48,3 +48,12 @@ Weekly: hold top-k coins by lookback return, only while BTC's lookback return > 
   maxDD -64% / -52%. 4h is similar, no advantage.
 - Not better than the live bot on BTC (48%/yr, -44% DD). Main open question: does it add as a
   diversifier, and do BTC filter + vol sizing tame its drawdown?
+
+## Trend filter vs ret20 filter supplement not replace BTC
+Script: `regime_variants.py`. Slow trend EMA {240, 150, 100, none} × fast BTC ret20 ≥ -3% filter {off, on}.
+- ret20 improves every EMA variant in train and test, on BTC and on the median of 22 coins.
+- Replacing the EMA with ret20 alone: best BTC train CAGR (63%) but test maxDD doubles (-12% → -25%),
+  and median-coin maxDD goes to -65%. The two filters do different jobs (long bear market vs short sell-off).
+- EMA150+ret20 vs EMA240+ret20 on BTC: 60%/-34% vs 55%/-38% train, 27%/-12% vs 36%/-12% test — noise.
+  Keep EMA240 (already live).
+- Per year, EMA240+ret20 vs live on BTC: better or equal in 6 of 7 years (2024 worse: +81% vs +96%).

@@ -28,6 +28,29 @@
 - [x] M1 — Baseline of the live bot (replica backtest, net of fees, per coin, train vs test)
 - [ ] M2 — Cheap improvements to the live bot (exits, regime filter, sizing), tested on train and confirmed on test
   - Tested: BTC trend filter + vol sizing pass (see VERIFICATION_PHASE_A). Next: decide and wire into the live bot.
+  - Decision: BTC gets the BTC-trend entry filter only. SOL stays unchanged. Vol sizing is skipped
+    (barely changes BTC).
+  - **Change:** BTC opens a new trade only if its 20-day return (prior close vs 20 closes before) is
+    ≥ -3%. Exits, stops and SOL are untouched. Implemented as a config option (`StrategyParams.ret_min`,
+    `None` = off) so it can be switched back with one line.
+  - Steps:
+    - [x] M2.1 — Redesign the bot into `btc_sol_hetzner_momentum_bot/bot/` (config, data, signals,
+      exchange, runner) with the filter as `StrategyParams.ret_min`. Signals are pure (no I/O), so
+      research and live use the same code. Runner compares the strategy with the real holding
+      (sells leftovers, never chases a missed entry), uses closed candles only, 1500-bar history,
+      and has `--dry-run`. Old files stay untouched until switch day.
+    - [x] M2.2 — Tests in `btc_sol_hetzner_momentum_bot/tests/` (39 pass): filter off = old bot
+      bar for bar on all 22 coins (trades, stops); filter on = research result; the daily decision
+      from a 1500-bar window = full-history replay for the last 120 days; runner action table and
+      no orders in dry run. A deliberate change (caution stop 0.2 → 0.3) makes the parity tests fail.
+      Returns cross-checked with vectorbt (BTC +782% / +1176%, same trades and max DD).
+    - [ ] M2.3 — Dry run on the server: new BTC logic runs daily in log-only mode next to the live
+      bot for ~2 weeks. This checks the plumbing (data, timing, no crashes), not the edge — with ~12
+      trades/yr, 2 weeks shows 0–1 trades.
+    - [ ] M2.4 — Switch day: both rules must agree on the BTC state (in trade / flat). If they
+      disagree, wait until they agree. (Checked 2026-09-27: both say "in trade".)
+    - [ ] M2.5 — Go live. Stop criteria set in advance: roll back if, after 15 new BTC trades, PF < 1,
+      or if the BTC drawdown exceeds 40% (worse than anything seen: -38% train, -12% test).
 - [ ] M3 — New swing candidates on 4h/daily
 - [ ] M4 — Trade-quality filter (probability of a good trade) on the best candidate
 

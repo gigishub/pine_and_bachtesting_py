@@ -42,7 +42,9 @@ def bot_position(df: pd.DataFrame, p: dict = LIVE_PARAMS, entry_ok: pd.Series | 
     s = FilteredStrategy.__new__(FilteredStrategy)
     s.entry_ok = None if entry_ok is None else entry_ok.reindex(df.index).fillna(False).astype(bool)
     s.df = df[["open", "close", "high", "low"]].copy()
-    s.calculate_indicators(p["atr_length_sl"], p["atr_length_vola"], p["ema_trend_length"], p["ema_is_bullish_length"])
+    s.calculate_indicators(p["atr_length_sl"], p["atr_length_vola"], p["ema_trend_length"] or 2, p["ema_is_bullish_length"])
+    if p["ema_trend_length"] is None:  # no slow trend filter
+        s.df["ema_trend"] = float("-inf")
     s.get_signal(p["lookback_high"], p["atr_vol_multiplier"])
     for i in range(1, len(s.df)):
         s.check_sl(i)
