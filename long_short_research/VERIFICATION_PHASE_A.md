@@ -45,3 +45,18 @@ Run: `python run_holdout.py` (validation and test run once). 20-day hold, 0.2% r
 - Benchmark, live-bot filter long side: validation lift -0.26, test +0.53. Neither rule dominates.
 - Verdict: **no long/short trend edge that passes the fixed rules.** The short side works as a bear-market hedge
   (it loses less than random shorting) but is not a standalone money-maker. M5 (full backtest) skipped.
+
+## btc_ret20 traded until the regime flips: short leg loses, long+short worse than long-only
+Quick simulation (not a file): equal weight top 10, long while BTC 20-day return > 0 / short while < 0, held
+until the regime flips, 0.1% per side, no funding. CAGR / maxDD / Sharpe:
+
+| period | buy & hold top 10 | long-only (flat in down) | short leg alone | long + short |
+|---|---|---|---|---|
+| train | -18.9% / -90% / 0.24 | 33.9% / -67% / 0.80 | -0.4% / -82% / 0.34 | 33.3% / -67% / 0.77 |
+| validation | 53.7% / -47% / 1.03 | 60.4% / -47% / 1.27 | -9.0% / -34% / -0.07 | 45.9% / -60% / 0.94 |
+| test | 1.2% / -72% / 0.35 | -7.9% / -69% / 0.05 | -28.8% / -59% / -0.44 | -34.5% / -82% / -0.29 |
+
+- Adding the short leg never helps and hurts badly in validation and test.
+- The regime flips 27–48 times a year since 2023 (average spell ~8–13 days), so the strategy is whipsawed: it
+  shorts after dips that then rebound. The 20-day-hold edge (Holdout finding) does not survive being traded
+  day by day.

@@ -20,7 +20,7 @@ from rotation_pit import load_panel  # noqa: E402
 TRAIN = (pd.Timestamp("2018-01-01", tz="UTC"), pd.Timestamp("2022-12-31", tz="UTC"))
 VALID = (pd.Timestamp("2023-01-01", tz="UTC"), pd.Timestamp("2024-09-30", tz="UTC"))
 TEST = (pd.Timestamp("2024-10-01", tz="UTC"), pd.Timestamp("2100-01-01", tz="UTC"))
-HORIZONS = (5, 10, 20)
+HORIZONS = (3, 5, 10, 20)
 PRIMARY_H = 20
 ROUND_TRIP = 0.002
 UNIVERSE_N = 10
@@ -90,13 +90,14 @@ class Result:
 
 
 def evaluate(d: dict, name: str, side: str, cand: pd.DataFrame, base: pd.DataFrame,
-             period: tuple = TRAIN, shifts: int = N_SHIFTS, seed: int = 0) -> Result:
+             period: tuple = TRAIN, shifts: int = N_SHIFTS, seed: int = 0,
+             h_main: int = PRIMARY_H, horizons: tuple = (5, 10, 20)) -> Result:
     """Candidate = base AND cand. Everything is restricted to the universe."""
     u = d["universe"]
     base = base & u
     both = base & cand
-    ret = side_returns(d["fwd"][PRIMARY_H], side)
-    s_c, s_b = samples(ret, both, period, PRIMARY_H), samples(ret, base, period, PRIMARY_H)
+    ret = side_returns(d["fwd"][h_main], side)
+    s_c, s_b = samples(ret, both, period, h_main), samples(ret, base, period, h_main)
     pf_c, pf_b = pf(s_c.values), pf(s_b.values)
     lift = pf_c - pf_b
 
@@ -106,7 +107,7 @@ def evaluate(d: dict, name: str, side: str, cand: pd.DataFrame, base: pd.DataFra
     null = []
     for k in rng.integers(60, len(cand) - 60, size=shifts):
         shifted = pd.DataFrame(np.roll(cv, k, axis=0), index=cand.index, columns=cand.columns)
-        null.append(pf(samples(ret, base & shifted, period, PRIMARY_H).values) - pf_b)
+        null.append(pf(samples(ret, base & shifted, period, h_main).values) - pf_b)
     p_shift = float(np.mean(np.array(null) >= lift)) if shifts else np.nan
 
     def grouped_ok(key_c, key_b, min_n):
@@ -122,7 +123,7 @@ def evaluate(d: dict, name: str, side: str, cand: pd.DataFrame, base: pd.DataFra
     yo, yt = grouped_ok(s_c.index.get_level_values(0).year, s_b.index.get_level_values(0).year, MIN_SAMPLES_YEAR)
 
     lift_h = {}
-    for h in HORIZONS:
+    for h in horizons:
         rh = side_returns(d["fwd"][h], side)
         lift_h[h] = pf(samples(rh, both, period, h).values) - pf(samples(rh, base, period, h).values)
 
