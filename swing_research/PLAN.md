@@ -44,11 +44,21 @@
       from a 1500-bar window = full-history replay for the last 120 days; runner action table and
       no orders in dry run. A deliberate change (caution stop 0.2 → 0.3) makes the parity tests fail.
       Returns cross-checked with vectorbt (BTC +782% / +1176%, same trades and max DD).
-    - [ ] M2.3 — Dry run on the server: new BTC logic runs daily in log-only mode next to the live
+    - [x] M2.3 — Dry run on the server: new BTC logic runs daily in log-only mode next to the live
       bot for ~2 weeks. This checks the plumbing (data, timing, no crashes), not the edge — with ~12
       trades/yr, 2 weeks shows 0–1 trades.
+      - Pushed to the bot repo (`4624c5f`, only new files). Tests pass on the server stack (Python 3.12,
+        pandas 3.0.1, numpy 2.2.6, no pyarrow, ccxt 4.5.42): 12/12 runner tests, parity tests skip (no
+        research data on server, expected). Manual dry run placed no orders and agreed with the live
+        bot's actual 00:00 BTC exit on 2026-09-28.
+      - Cron added 2026-09-28: `15 0 * * * /root/projects/trading_bot/run_dry.sh >> /root/projects/trading_bot/dry_run.log 2>&1`.
+        Started running via SSH from this session (`~/.ssh/config` host `hetzner`, key `id_ed25519`,
+        now in the macOS agent/Keychain). First automatic run: 2026-09-29 00:15 UTC.
+      - Watch for through M2.4: `dry_run.log` fills in as expected (no exceptions, one line per
+        coin per night) and `bot/` decisions keep matching `trading_midnight_utc.log`'s actual actions.
     - [ ] M2.4 — Switch day: both rules must agree on the BTC state (in trade / flat). If they
-      disagree, wait until they agree. (Checked 2026-09-27: both say "in trade".)
+      disagree, wait until they agree. (Checked on live KuCoin data for 2026-09-28: both sell BTC
+      at this open and hold SOL.)
     - [ ] M2.5 — Go live. Stop criteria set in advance: roll back if, after 15 new BTC trades, PF < 1,
       or if the BTC drawdown exceeds 40% (worse than anything seen: -38% train, -12% test).
 - [ ] M3 — New swing candidates on 4h/daily
@@ -57,6 +67,13 @@
 ## Open / deferred
 - Bot reconstructs its position from 700 bars of history, not from the real exchange
   balance. A failed order leaves the bot believing it is in a trade. Worth fixing.
+  (Fixed in the new bot's runner, which checks the real holding — see M2.1.)
+- Old bot's `wait_for_candle_completion` accepts the just-opened current-period candle as soon as
+  KuCoin returns it (seen accepting ~13s after 00:00 on 2026-09-28), then computes today's signal
+  off it via shift(1). If KuCoin ever returns that fresh candle with an unsettled/wrong close, the
+  signal could be wrong for one day. The new bot avoids this: `closed_candles()` only ever returns
+  bars that are fully finished. No evidence yet this has caused a bad decision (new and old bot
+  agreed on 2026-09-28's BTC exit) — flagging so it isn't lost, not urgent.
 - 1h data: possible lower-timeframe early signals for later.
 - ALGO and XLM 4h failed to download (Bybit 'Get kline failed'); retry.
 - Rotation: test with BTC filter + vol sizing, and as a diversifier next to the live bot.
