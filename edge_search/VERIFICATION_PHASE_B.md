@@ -74,3 +74,29 @@ Validation 2023-07-01 → 2024-09-30, the four long-only cells (1h, x=2, fixed s
 - Verdict: fail. Test window untouched by Rounds 3–4b. What remains is a long-only 1h breakout that reduces drawdown but earns less than holding BTC in this window
   and in train earned +12% while BTC earned +2% and the coin average lost 10%; it is a risk-managed long, not a two-directional edge.
 - Caveat: exit variants were chosen after seeing train (counted in the 114 cells); 11 coins only on 1h; 0.10% per side may be optimistic for a 1h system trading 25–40 times a year per coin.
+
+## Round 5 other coins: the long-only 1h breakout does not generalize on train, works as de-levered alt beta on validation, and good coins cannot be picked in advance
+Frozen rule (1h, long-only, x=2, fixed stop m in 2/3, n in 10/20 days) applied to every Bybit perp with funding and 1h candles: 22 original + 112 downloaded to `../crypto_data/data_extra/`
+(ZILUSDT and RVNUSDT failed to download; 82 coins have >= 90 days in train, 107 in validation). `swing_coins.py`, `results/round5_*.csv`. Original-11 = the coins the rule was chosen on.
+- Train (2021 → 2023-06): original coins +6% to +12%/yr (as before). New coins **-0.7% and -1.6%** for n=10 and **-19% to -23%** for n=20; only 18–30% of coins are positive.
+  Equal-weight buy-and-hold of the same coins: -20%/yr, maxDD -88%. The rule cuts the drawdown to -37% to -63% but does not make money on the new coins.
+- Validation (2023-07 → 2024-09): all sets positive. New coins +41% to +48%/yr, maxDD -22% to -32%, Sharpe 1.14–1.21, `shift_p` 0.02–0.04 (gate 2 passes); equal-weight buy-and-hold
+  of the same coins +73%, maxDD -65%, Sharpe 1.10. Liquid-20 set: +46% to +59%, maxDD -28% to -33%, but `shift_p` 0.28–0.35 (gate 2 fails).
+- Rule (a) fails (maxDD 22% to 33% on the wider sets; the original 11 coins meet it in 3 of 4 cells); rule (b) fails (CAGR far below buy-and-hold).
+  Sharpe is equal to buy-and-hold in validation and lower in train: this is roughly half-exposure beta, not extra alpha.
+- Can good coins be picked in advance? No: rank correlation of per-coin CAGR train vs validation is 0.01 to 0.06 (n=10) and -0.10 (n=20); the top train quartile earned a median +9.3% in
+  validation vs -2.0% for the rest, which is not a stable selection rule. Share of coins with positive CAGR: 30% in train, 54% in validation (a market effect).
+- Verdict: gate 3 (neighbours) fails on train (n=20 cells negative); no promotion to test. The 1h breakout is a risk-managed long that follows the market, not a coin-picking edge.
+- Caveats: survivorship (Bybit lists only perps that still exist, which flatters long-only results); liquid-20 shift test is approximate (mask applied inside the shift).
+
+## Round 6 BTC as the leader: no trading rule passes; the 1–5 day lead-lag flips sign between train and validation
+Rules R0–R4 (alts' own breakout, gated by BTC trend filter or BTC breakout state, follow-BTC entry, BTC surge follow) on the liquid-20 alts, `swing_lead.py`, `results/round6_*.csv`.
+- Train: 0 of 21 cells have `shift_p` <= 0.05 and CAGR > 0. Near misses: 1h R2 (alt breakout while BTC is in breakout) +18.8% (p 0.07); 4h R0 +10.6% (0.08); 1h R3 both legs +25.8% (0.08).
+  R3 (enter alts when BTC breaks out) has a positive long leg in all 6 cells (+5% to +20%) but none is significant (p 0.08–0.18); its short leg loses in 5 of 6. R1 (BTC trend filter) and R4 (BTC surge) do not help.
+  Liquid-set buy-and-hold on train: 1.3% (1d), 5% (4h), -35% (1h, wide set), maxDD -82% to -94%, so any timing out of alts looks good against it.
+- Lead-lag statistic (alt's next-w return on its own past-w return and BTC's past-w return, non-overlapping bars, circular-shift null):
+  train 1d 5-day +0.12 (p 0.04), 4h 1-day +0.08 (p 0.00), 4h 1-bar -0.04 (p 0.01); validation 1d 5-day -0.05 (0.68), 4h 1-day -0.09 (0.07), 4h 1-bar -0.055 (0.03), 1h 4-bar -0.07 (0.01), 1h 24-bar -0.16 (0.01).
+  Sign flips for horizons of a day or more (positive in train, negative in validation). The only sign that holds in both is small and negative at 4h to 1h horizons (alts give back part of a BTC move):
+  a 1% BTC move implies about 0.05% on the alt, less than the 0.10% per side cost, so it is not tradeable as is.
+- Verdict: BTC does not reliably lead alts in a way that survives a split; BTC as a *gate* (R1, R2) does not add a robust edge. Test untouched.
+- Caveat: R3 pattern (all six long legs positive) is one BTC signal seen through six views, not six independent confirmations.

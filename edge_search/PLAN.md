@@ -124,6 +124,33 @@ Round 4b train result (after fixing the shift null, see Phase B): both legs 0 of
 Promoted to validation, long-only, as the plateau of those four cells, judged on the four together (about 2.4 false passes are expected by chance in 48 long cells):
 1h, x=2, fixed stop, n in {10, 20}, m in {2, 3}. Validation win rule as in Rules; test only if the plateau holds.
 
+## Round 5 — the long-only 1h band breakout on other coins (user asked; declared before any run; frozen)
+Rule unchanged from the Round 4b plateau: long-only, 1h, entry close > EMA(n) + 2·ATR(n), fixed stop at entry - m·ATR(n) or close back below EMA, n in {10, 20} days,
+m in {2, 3} (four cells, no retuning). Coins: every Bybit perp that has funding data and 1h candles (`../crypto_data/data_extra/` downloaded now, plus the 11 already used).
+Same costs (0.10% per side + funding) and splits. Question: does it work better on other coins, and can good coins be picked in advance?
+- Judged on the whole set: basket CAGR, maxDD and Sharpe vs the equal-weight buy-and-hold of the same coins, `shift_p` (gate 2), and the share of coins with positive CAGR.
+  The original 11 coins and the new coins are reported separately (the 11 were used to choose the rule, the new coins were not).
+- Coin picking: a coin's train result must predict its validation result (rank correlation of per-coin CAGR, train vs validation) before any "best coins" subset is used.
+  Any subset rule is declared on train only and then judged on validation, never chosen on validation.
+- Test window run once, and only if the whole-set result passes validation (gate 2 and rule (a) or (b)).
+- Caveat that cannot be removed: Bybit only lists perps that still exist, so delisted coins are missing; that flatters any long-only result (survivorship).
+
+Round 5 addition (user, before any run): also report a **liquid set** = at each bar the 20 coins with the highest 90-day median dollar volume (close × volume) among the
+coins with data, standing in for "enough market cap to trade". Chosen by liquidity only, never by results; positions are forced flat in coins outside the set.
+
+## Round 6 — BTC as the leader for other coins (user asked; declared before any run; frozen)
+Universe: the liquid set above (top 20 by 90-day median dollar volume), BTC excluded from the traded coins, timeframes 1h, 4h, 1d, same costs, funding and splits.
+Rules (BTC state = BTC's own Round 4b band breakout: +1 long / -1 short / 0 flat, x = 2, fixed stop m = 3, n in {10, 20} days):
+- R0 reference: alt's own band breakout, long-only (n = 20, x = 2, m = 3), no BTC input.
+- R1: R0 but only while BTC passes the trend filter (close > SMA200 and 20-day return > -3%, previous fully closed day).
+- R2: R0 but only while BTC state is +1.
+- R3 follow-BTC entry: go long the alt when BTC state flips 0 -> +1 (whatever the alt is doing), exit when BTC state is not +1 or at entry - 3·ATR(n); mirror short when BTC state flips to -1.
+- R4 surge follow: long every alt while BTC's 5-day return > +8%, short while < -8% (state-based); R4 legs long/short/both.
+- Lead-lag statistic (no trading): pooled OLS of the alt's next-w-bar return on its own past-w-bar return and BTC's past-w-bar return, w = 1 day and 5 days (1d bars) and 4 hours and 1 day (1h bars);
+  the coefficient on BTC is judged against 200 circular shifts of BTC's series (`shift_p` <= 0.05 and the same sign in train and validation).
+Cells: R1-R3 × n {10, 20} × 3 timeframes, R0 × 3, R4 × 3, plus the statistic. Legs both/long/short. Gates as Round 3-5 (net > 0, `shift_p` <= 0.05 on the basket, neighbours positive).
+The 114 cells of Rounds 3-4b plus these count against any winner. Test window run once, only for a cell family that passes train and validation.
+
 ## Ideas (10)
 - [x] A — Control: BTC trend (close > SMA200 and 20d return > -3%), long BTC → pass train, fail valid
 - [x] B — Cross-sectional momentum: top 3 of 10 by 60d return, cash when BTC filter off → pass train, fail valid (loses money)
@@ -143,6 +170,8 @@ Promoted to validation, long-only, as the plateau of those four cells, judged on
 - [x] M5 — Round 2 crowding overlays K–T on train: none passes (see Phase B)
 - [x] M6 — Round 3 swing trend both directions, 36 cells on 1h/4h/1d: none passes train (see Phase B)
 - [x] M7 — Rounds 4 and 4b (EMA/ATR band breakout, exits) on train and the promoted plateau on validation: fails (see Phase B)
+- [x] M8 — Round 5 (long-only breakout on other coins, liquid set): no promotion, good coins cannot be picked (see Phase B)
+- [x] M9 — Round 6 (BTC as leader): no rule passes train, lead-lag sign flips (see Phase B)
 - [ ] M4 — Finalists on test once, then funding and 4h/1h follow-up if any pass
   - **Status:** no finalists (nothing passed validation). Test untouched. Next step decided at a checkpoint.
 

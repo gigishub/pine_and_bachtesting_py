@@ -31,9 +31,13 @@ N_SHIFTS = 200
 def load(tf: str) -> dict[str, pd.DataFrame]:
     """Per coin: OHLC plus the funding paid to a short over each bar (settlements in (bar start, bar end])."""
     out = {}
-    for d in sorted(DATA.iterdir()):
+    extra = DATA.parent / "data_extra"
+    dirs = sorted(DATA.iterdir()) + (sorted(extra.iterdir()) if extra.exists() else [])
+    for d in dirs:
+        if not d.is_dir():
+            continue
         cf = glob.glob(str(d / f"{d.name}_{tf}_start_*.parquet"))
-        ff = glob.glob(str(d / f"{d.name}_funding_start_*.parquet"))
+        ff = glob.glob(str(d / f"{d.name}_funding_start_*.parquet")) or glob.glob(str(DATA.parent / "data_funding" / d.name / f"{d.name}_funding_start_*.parquet"))
         if not cf or not ff:
             continue
         c = pd.read_parquet(cf[0])
@@ -45,6 +49,13 @@ def load(tf: str) -> dict[str, pd.DataFrame]:
         c["fund"] = f.reindex(c.index).fillna(0.0)
         out[d.name] = c
     return out
+
+
+def liquid_mask(dfs: dict[str, pd.DataFrame], tf: str, top: int = 20) -> pd.DataFrame:
+    """True where the coin is among the `top` by 90-day median dollar volume among coins with data at that bar."""
+    win = 90 * BPD[tf]
+    dv = pd.DataFrame({k: (d["Close"] * d["Volume"]).rolling(win, min_periods=win // 2).median() for k, d in dfs.items()})
+    return dv.rank(axis=1, ascending=False, method="first") <= top
 
 
 def atr(df: pd.DataFrame, n: int) -> pd.Series:
