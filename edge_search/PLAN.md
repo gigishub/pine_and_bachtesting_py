@@ -102,6 +102,28 @@ Train gates per cell (both legs): (1) net return after costs and funding > 0; (2
 (3) the neighbouring horizons of the same family and timeframe are also positive. Judged on cells, not on the best one: a real edge is a plateau.
 Cells passing go to validation (gates 1 and 2 plus the win rule with capture), survivors to test once. 36 cells counted against any winner.
 
+## Round 4 — EMA + ATR entry, both directions (user's idea; declared before any run; frozen)
+Same universe, costs, funding, splits and gates as Round 3 (`swing_band.py` reuses `swing_trend.py`). n = EMA and ATR window in days (10 or 20).
+- Variant A (band breakout): long when close > EMA(n) + x·ATR(n), short when close < EMA(n) - x·ATR(n), x in {1, 1.5, 2}.
+- Variant B (volatility expansion): long when close > EMA(n) and ATR(n) >= x · mean(ATR(n) over the last n bars), short when close < EMA(n) and the same
+  expansion, x in {1.25, 1.5}.
+- Exit for both: close crosses back through the EMA (flat). No immediate reversal. Timeframes 1h, 4h, 1d. Cells: A 2×3×3 = 18, B 2×2×3 = 12; legs both/long/short shown.
+- Gates as Round 3 (net > 0, beats >= 95% of shifted positions, neighbouring settings positive). 30 more cells counted against any winner (66 total in Rounds 3-4).
+
+### Round 4b — exits for the band breakout (user asked; declared after seeing Round 4 train; frozen)
+Round 4 train: variant A long leg is positive in 15 of 30 cells (+4% to +13%/yr, best on 1h/4h), short leg negative in all, variant B nothing. Only
+variant A is followed up, with n in {10, 20} days, x in {1, 2} and these exits (entry as in Round 4):
+- E1 trailing stop: exit when close < highest close since entry - m·ATR(n) (short mirrored), m in {2, 3}. Replaces the EMA exit.
+- E2 fixed stop: exit when close < entry close - m·ATR(n) at entry, m in {2, 3}, or when close crosses back through the EMA.
+- After any exit the entry signal must be false for one bar before a new entry.
+Cells: 2 × 2 × 4 exits × 3 timeframes = 48, legs both/long/short. Shift test on both and long. The exit variants were chosen after
+seeing train, so they count as extra cells (114 in Rounds 3 to 4b) and validation is the real test; nothing is tuned further on train.
+
+Round 4b train result (after fixing the shift null, see Phase B): both legs 0 of 48 pass; long-only 1 of 48 passes gates 1-2 (1h, n=10, x=2, fixed stop m=3:
++12.3%/yr, maxDD -34.7%, `shift_p` 0.04), and its neighbours (x=2, n in 10/20, m in 2/3, 1h fixed stop) are all positive (+6% to +12%), so gate 3 passes.
+Promoted to validation, long-only, as the plateau of those four cells, judged on the four together (about 2.4 false passes are expected by chance in 48 long cells):
+1h, x=2, fixed stop, n in {10, 20}, m in {2, 3}. Validation win rule as in Rules; test only if the plateau holds.
+
 ## Ideas (10)
 - [x] A — Control: BTC trend (close > SMA200 and 20d return > -3%), long BTC → pass train, fail valid
 - [x] B — Cross-sectional momentum: top 3 of 10 by 60d return, cash when BTC filter off → pass train, fail valid (loses money)
@@ -120,6 +142,7 @@ Cells passing go to validation (gates 1 and 2 plus the win rule with capture), s
 - [x] M3 — Survivors on validation
 - [x] M5 — Round 2 crowding overlays K–T on train: none passes (see Phase B)
 - [x] M6 — Round 3 swing trend both directions, 36 cells on 1h/4h/1d: none passes train (see Phase B)
+- [x] M7 — Rounds 4 and 4b (EMA/ATR band breakout, exits) on train and the promoted plateau on validation: fails (see Phase B)
 - [ ] M4 — Finalists on test once, then funding and 4h/1h follow-up if any pass
   - **Status:** no finalists (nothing passed validation). Test untouched. Next step decided at a checkpoint.
 

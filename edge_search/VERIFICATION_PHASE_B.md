@@ -35,6 +35,7 @@ funding and OI, results in `results/round2_train.csv`). Baseline A on this windo
 - Caveat: BTC-only overlays; OI lagged one day; train is 2.6 years with 15 non-overlapping 30-day BTC-down blocks.
 
 ## Round 3 train: no long/short trend system on 1h, 4h or 1d makes money after costs and funding
+Superseded by: Round 3 to 4b: shift test fixed (the `shift_p` values quoted here were all 1.0 because of a NaN bug; the verdict itself stands, since no both-leg cell is positive)
 36 cells (Donchian stop-and-reverse, SMA cross, chandelier reversal, time-series momentum × horizons 5/20/60 days × 1h/4h/1d),
 22 Bybit perps (11 have 1h), 0.10% per side plus real funding, train 2021-01-01 → 2023-06-30 (`swing_trend.py train`,
 `results/round3_train.csv`). BTC buy-and-hold on the window 2.1%/yr, maxDD -77%; equal-weight 22 coins -6.6%/yr, maxDD -83%.
@@ -51,3 +52,25 @@ funding and OI, results in `results/round2_train.csv`). Baseline A on this windo
 - Verdict: none of the 36 cells passes train; validation and test untouched.
 - Caveat: fixed grid of 3 horizons per family; the plan did not tune stops, filters or coin selection. Train includes the 2021 alt
   blow-off and the 2022 bear, both hard for trend systems with 5–20 day horizons.
+
+## Round 3 to 4b: shift test fixed (funding NaN bug), verdicts re-checked
+Supersedes: Round 3 train, its statements "0 of 36 pass the shift gate (`shift_p` ≈ 1.0: real timing is no better than shifted timing)".
+- Bug: funding was NaN on bars without data, which made the Sharpe NaN in `shift_p()`, so real and null both became -inf and every `shift_p` was 1.0
+  (the peek check also gave 1.0). Fixed in `swing_trend.py` (`np.nan_to_num`); peek now gives 0.00. Rounds 3, 4 and 4b re-run on train.
+- Round 3 (36 cells): both legs 0 of 36 positive; long-only 3 of 36 barely positive (+0.7% to +3.2%, shift not computed for long-only in this round). Verdict unchanged.
+- Round 4 (EMA ± x·ATR band and ATR expansion, 30 cells, 10–20 day windows): both legs 0 of 30 positive; short-only 0 of 30; long-only band breakout (A) positive in
+  15 of 30 (+4% to +13%/yr, best on 1h/4h) but 0 pass the shift gate; expansion variant (B) nothing. The exit "close back through the EMA" is used.
+- Round 4b (band breakout with trailing or fixed stops, 48 cells): both legs 0 of 48 pass (1 positive); trailing stops are worse than the EMA exit;
+  fixed stops help long-only on 1h and 4h. Long-only: 19 of 48 positive, 1 passes gates 1 and 2 (1h, n=10, x=2, fixed stop m=3: +12.3%, maxDD -34.7%, `shift_p` 0.04);
+  its neighbours (1h, x=2, fixed stop, n 10/20, m 2/3) are all positive on train (+6% to +12%) while x=1 cells are negative. One pass in ~48 long cells is about what chance gives (2.4 expected).
+
+## Round 4b validation: the long-only plateau makes 35% with -19% drawdown but is not better than BTC and fails the shift gate; shorts lose 25–28%
+Validation 2023-07-01 → 2024-09-30, the four long-only cells (1h, x=2, fixed stop, n in 10/20, m in 2/3), `swing_exit.py valid 1h 2.0 fixed`, `results/round4b_valid_plateau.csv`.
+- Long-only: CAGR +35% to +37%, maxDD -18.9% to -20.4%, Sharpe 1.0–1.1, 25–39 trades/yr per coin. Rule (a) (CAGR ≥ 20% and maxDD ≤ 20%) met by 3 of 4 cells (the fourth has -20.4%).
+- Gate 2 fails: `shift_p` 0.08 to 0.18 (needs ≤ 0.05). Fifteen months is short, so power is low, but the gate is the declared one.
+- Versus the window: BTC buy-and-hold +79%/yr, maxDD -32%, Sharpe 1.5 (11-coin equal weight +80%, -46%). The system earns less than BTC and has a lower Sharpe; rule (b) fails.
+  It behaves like a partial-exposure long book: capture up 61% / down 82% in 30-day blocks (only 9 down blocks, all shallow).
+- Short leg: -26% to -28%/yr in every cell; both legs together +0% to +3%. Short trend-following loses in train and validation, in every cell tested this session (0 of 114).
+- Verdict: fail. Test window untouched by Rounds 3–4b. What remains is a long-only 1h breakout that reduces drawdown but earns less than holding BTC in this window
+  and in train earned +12% while BTC earned +2% and the coin average lost 10%; it is a risk-managed long, not a two-directional edge.
+- Caveat: exit variants were chosen after seeing train (counted in the 114 cells); 11 coins only on 1h; 0.10% per side may be optimistic for a 1h system trading 25–40 times a year per coin.

@@ -127,7 +127,7 @@ def shift_p(dfs, poss, lo, hi, bpy, n=N_SHIFTS, seed=0) -> float:
     for j, k in enumerate(names):
         d = dfs[k].reindex(idx)
         R[:, j] = d["Close"].pct_change().to_numpy()
-        Fd[:, j] = d["fund"].to_numpy()
+        Fd[:, j] = np.nan_to_num(d["fund"].to_numpy())
         P[:, j] = poss[k].reindex(idx).fillna(0.0).to_numpy()
     R = np.nan_to_num(R)
 
