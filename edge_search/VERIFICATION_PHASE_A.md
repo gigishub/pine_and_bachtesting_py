@@ -45,3 +45,21 @@ Per the rules, none goes to test. Test is untouched.
 
 ## Verdict for the ten ideas (daily, top-10, costs 0.15%/side)
 No idea meets the win condition on validation. Test was not run.
+
+## Capture ratios: trend ideas protect in real bear markets but validation had no crash to protect against
+Method (`capture.py`): non-overlapping 30-day blocks, strategy block return vs BTC buy-and-hold block return, train and validation only.
+Train has 31 BTC-up blocks (avg +21%) and 30 BTC-down blocks (avg -16%, worst -41%). Validation has 14 up (avg +15%) and 8 down (avg -6%, worst -11%).
+
+| idea | train up / down capture % | validation up / down capture % |
+|---|---|---|
+| A BTC trend | 53 / 27 | 52 / 125 |
+| B momentum | 72 / 22 | 41 / 144 |
+| E low-vol | 66 / 24 | 49 / 116 |
+| C, I | 52 / 37, 63 / 40 | 39 / 92, 44 / 92 |
+| H long/short | 18 / -10 | -5 / -37 |
+| F, G | 10 / 8, 26 / 16 | 11 / 18, 10 / -5 |
+
+- Train: A, B, E keep 53–72% of BTC's upside and take only 22–27% of the downside. That is the asymmetry the win condition asks for, but no train block with BTC down was positive for them (0–7% of down blocks).
+- Validation: the same ideas take 116–144% of the downside and only 41–52% of the upside. There was no crash (worst BTC block -11%); the down blocks were shallow dips inside a bull market, and slow filters (SMA200, 60d momentum) exit after the dip and re-enter late, so they pay for the dip and miss the rebound.
+- H is the only idea with negative down capture (positive in 5 of 8 down blocks on validation) but it gives up the upside (-5%).
+- Reading: slow trend filters help in long bear markets and hurt in choppy bull markets. Validation cannot confirm or refute crash protection because it holds no crash. Test (since 2024-10) is untouched and may.
