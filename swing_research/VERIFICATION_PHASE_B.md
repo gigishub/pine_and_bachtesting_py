@@ -30,3 +30,18 @@ Universe choice made after seeing the grid (180d beat 30d at every universe size
 - Full period: +33%/yr, max DD -78%. BTC-only with the same filter: +31%/yr, max DD -63%.
 - 7 weekdays: +31% to +56%/yr, max DD -58% to -80%. Always ≥ BTC-only in return, worse drawdown in 6 of 7.
 - Verdict: about the same return as timed BTC for more risk. Not a clear improvement on its own.
+
+## Bot settings tune: exits, earlier entries, longer holds — no variant beats the live settings
+Script `bot_tune.py`. Live bot rules on 22 coins (1d), BTC 20-day filter on all coins, one setting changed at a time (14 variants, none tuned further).
+Median-coin CAGR train / test: live 13.3 / 15.9%. Every variant is lower in both periods (best: ema_trend=100 test 20.1 but train -0.2; trail_lookback=14 10.0 / 11.7).
+- Slower stop (trail_lookback 14–21): median maxDD improves ~5–9 points (-49 → -40/-44) but return falls; BTC test CAGR 36 → 26 at 21.
+- Earlier entry (ema_fast 3/5, ema_trend 100/150, no vol-spike filter): more coins win in train, median return falls, drawdown does not improve.
+- Live settings are a local optimum on the median coin, and were fit on this data, so the ranking is if anything flattering to them.
+
+## Hourly phase test: the live rule shifted by 0–23 hours; UTC midnight is at or near the best phase for BTC and SOL
+Script `bot_hourly_size.py`, 13 coins with 1h data, BTC 20-day filter on, 0.1% fee. Same daily rule run on 24-hour-offset daily candles; "ens24" = average of the 24 phases (a bot that checks every hour with 1/24 tranches).
+- Median coin CAGR train / test: live (00:00 UTC) 15.6 / 16.6%, ens24 9.8 / 7.8%. Checking hourly / entering earlier on average is worse, not better.
+- Phase spread is large: BTC train 37–58%, test 10–35%; SOL train 36–62%, test -3 to 25%. The live phase gives BTC test 34.9% (= the best phase) and SOL 23.3%, while the 24-phase average gives 19.4% / 11.4%. Expect less than the backtest.
+
+## Volatility sizing at entry (min(1, 4.5%/ATR14%)), daily bot, all coins, BTC filter on
+Median CAGR train / test: 13.3 / 15.9% → 13.4 / 14.1%; median maxDD -49 / -49% → -35 / -35%. SOL maxDD -41 → -30 (train), -26 → -21 (test); BTC maxDD -38 → -32 (train), -12 → -12 (test), CAGR -1 to -2 points.
