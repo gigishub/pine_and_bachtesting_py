@@ -226,9 +226,9 @@ Promoted to validation (long-only; g1, g2 `shift_p` <= 0.05 and conviction-adds)
 
 ## Round 9 — literature ideas not yet tested (declared before any run; frozen)
 Same universe (PIT top-10), engine, costs (0.15%/side), Binance splits and gates as Phase A. Weights decided at the close. No grid; k scales lookbacks (0.5 / 2).
-- [ ] U — Zarattini ensemble: BTC long-only, fraction of 9 Donchian lookbacks (5,10,20,30,60,90,150,250,360d) currently at a break of their N-day high and not yet broken below their N-day low; scaled to 25% vol (30d realised, never levered above 1).
-- [ ] V — MAX effect, market-neutral: weekly (Mon), long 3 coins with lowest max daily return of the last 30d, short 3 with highest.
-- [ ] W — Weekly reversal, market-neutral: weekly (Mon), long 3 worst 7d return, short 3 best.
-- [ ] X — Same-weekday seasonality, market-neutral: daily, score = mean return on the coin's previous 8 same weekdays; long top 3, short bottom 3 (score of the day being traded).
-- [ ] Y — ETH/BTC pairs: z of log(ETH/BTC) vs 60d mean/std; short ETH/long BTC at z>2, reverse at z<-2, flat at crossing 0 (each leg 0.5).
+- [x] U — Zarattini ensemble: BTC long-only, fraction of 9 Donchian lookbacks (5,10,20,30,60,90,150,250,360d) currently at a break of their N-day high and not yet broken below their N-day low; scaled to 25% vol (30d realised, never levered above 1).
+- [x] V — MAX effect, market-neutral: weekly (Mon), long 3 coins with lowest max daily return of the last 30d, short 3 with highest.
+- [x] W — Weekly reversal, market-neutral: weekly (Mon), long 3 worst 7d return, short 3 best.
+- [x] X — Same-weekday seasonality, market-neutral: daily, score = mean return on the coin's previous 8 same weekdays; long top 3, short bottom 3 (score of the day being traded).
+- [x] Y — ETH/BTC pairs: z of log(ETH/BTC) vs 60d mean/std; short ETH/long BTC at z>2, reverse at z<-2, flat at crossing 0 (each leg 0.5).
 Counted against any winner: 10 (Phase A) + 5.
