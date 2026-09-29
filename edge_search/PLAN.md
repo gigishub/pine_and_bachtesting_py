@@ -88,6 +88,20 @@ Validation: gates 1, 2 and 4 again, plus win rule (a), or (b) on strict buy-and-
 Test: survivors once. Stop rule: this is round 1 of the two allowed; a clear "none" is a valid result.
 Caveat: test-window dates were already used by M10 (other ideas); any survivor there is weaker evidence.
 
+## Round 3 — swing trend in both directions, any timeframe (declared before any run; frozen)
+User goal: follow the big up and down moves, long and short, on any timeframe. No idea count limit here, but every cell is logged.
+Universe: the 22 Bybit perps with local candles (`../crypto_data/data/`), each coin traded on its own signal, equal-weight average of the coins
+listed that day. Timeframes 1h, 4h, 1d. Position in {-1, 0, +1}, decided on the bar close, earns the next bar.
+Costs: 0.10% per side of turnover (perp taker fee + slippage) plus the real Bybit funding (long pays, short receives the settled rate).
+Families, each with horizon N = 5, 20, 60 days (converted to bars): F1 Donchian stop-and-reverse (break of N-bar high = long, low = short, hold until
+the opposite break); F2 SMA cross (N/4 vs N); F3 chandelier reversal (flip when close is 3 ATR(N/4, min 10 bars) from the extreme since the flip);
+F4 time-series momentum (sign of N-bar return). Each shown as both legs, long-only and short-only. 4 × 3 × 3 = 36 cells; all reported.
+Calibration: a hindsight zigzag (20% reversal, daily BTC) gives the ceiling of "the big moves" so we can see what share real-time rules capture.
+Split: train 2021-01-01 → 2023-06-30, validation 2023-07-01 → 2024-09-30, test 2024-10-01 → now (once).
+Train gates per cell (both legs): (1) net return after costs and funding > 0; (2) beats >= 95% of 200 circular shifts of its positions on Sharpe;
+(3) the neighbouring horizons of the same family and timeframe are also positive. Judged on cells, not on the best one: a real edge is a plateau.
+Cells passing go to validation (gates 1 and 2 plus the win rule with capture), survivors to test once. 36 cells counted against any winner.
+
 ## Ideas (10)
 - [x] A — Control: BTC trend (close > SMA200 and 20d return > -3%), long BTC → pass train, fail valid
 - [x] B — Cross-sectional momentum: top 3 of 10 by 60d return, cash when BTC filter off → pass train, fail valid (loses money)
@@ -105,6 +119,7 @@ Caveat: test-window dates were already used by M10 (other ideas); any survivor t
 - [x] M2 — Ideas A–J on train, verdicts logged
 - [x] M3 — Survivors on validation
 - [x] M5 — Round 2 crowding overlays K–T on train: none passes (see Phase B)
+- [x] M6 — Round 3 swing trend both directions, 36 cells on 1h/4h/1d: none passes train (see Phase B)
 - [ ] M4 — Finalists on test once, then funding and 4h/1h follow-up if any pass
   - **Status:** no finalists (nothing passed validation). Test untouched. Next step decided at a checkpoint.
 
