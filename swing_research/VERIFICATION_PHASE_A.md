@@ -49,6 +49,8 @@ Weekly: hold top-k coins by lookback return, only while BTC's lookback return > 
 - Not better than the live bot on BTC (48%/yr, -44% DD). Main open question: does it add as a
   diversifier, and do BTC filter + vol sizing tame its drawdown?
 
+Superseded by: [Phase B: Rotation top 30 by 30d volume fails](VERIFICATION_PHASE_B.md#rotation-top-30-by-30d-volume-fails)
+
 ## Trend filter vs ret20 filter supplement not replace BTC
 Script: `regime_variants.py`. Slow trend EMA {240, 150, 100, none} × fast BTC ret20 ≥ -3% filter {off, on}.
 - ret20 improves every EMA variant in train and test, on BTC and on the median of 22 coins.

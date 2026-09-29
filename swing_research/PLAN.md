@@ -76,5 +76,5 @@
   agreed on 2026-09-28's BTC exit) — flagging so it isn't lost, not urgent.
 - 1h data: possible lower-timeframe early signals for later.
 - ALGO and XLM 4h failed to download (Bybit 'Get kline failed'); retry.
-- Rotation: test with BTC filter + vol sizing, and as a diversifier next to the live bot.
-- Survivorship: coin list chosen in 2026; judge on 2021 majors.
+- Rotation: tested point in time (Phase B). Large-cap version ≈ timed BTC return with worse drawdown.
+  Open: real historical market-cap filter (needs paid data or CMC snapshots); rotation as a diversifier.
