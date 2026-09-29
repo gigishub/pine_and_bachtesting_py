@@ -100,3 +100,28 @@ Rules R0–R4 (alts' own breakout, gated by BTC trend filter or BTC breakout sta
   a 1% BTC move implies about 0.05% on the alt, less than the 0.10% per side cost, so it is not tradeable as is.
 - Verdict: BTC does not reliably lead alts in a way that survives a split; BTC as a *gate* (R1, R2) does not add a robust edge. Test untouched.
 - Caveat: R3 pattern (all six long legs positive) is one BTC signal seen through six views, not six independent confirmations.
+
+## Round 7 what makes the BTC/SOL bot work: no coin trait predicts where the bot rule works, and admitting coins from their track record does not beat BTC alone
+Binance daily, all USDT pairs incl. delisted, point-in-time top 30 by 180-day dollar volume (138 coin segments ever eligible), the live bot's own strategy code (`bot_baseline.py: bot_position`)
+with the BTC 20-day filter on every coin, 0.15% per side (`bot_coins.py`, `results/round7_*.csv`). Sanity: BTC 25% / 49% / 33% CAGR and maxDD -44% / -23% / -12% (train / validation / test),
+SOL 239% / 95% / 32%; consistent with the live-bot baseline (test drawdown -12%).
+- Option 1 (traits): quarterly rank correlation between a trait and the rule's next-91-day log return. No trait passes: the largest train t-stat is 0.78 (needed >= 2) and train mean rho is -0.06 to +0.03 for all six.
+  Validation shows large correlations for age (+0.22, t 2.7), BTC correlation (+0.21, t 6.9) and volatility (-0.26, t -2.5) but train is about zero (0.02, 0.03, 0.01), so the sign does not carry over;
+  these describe the 2023–24 bull market, not a stable coin property.
+  BTC and SOL do share traits (percentile among eligible coins on 2026-06-23): liquidity 96 / 89, BTC correlation 96 / 89 (by construction for SOL), volatility 4 / 26 (low), age 93 / 48.
+  They are the most liquid, least volatile coins, but that does not predict which other coins the rule works on.
+- Option 2 (walk-forward admission: >= 8 trades, PF >= 1.5 and a positive return in each 365-day half of the trailing 730 days), equal weight of admitted coins, next 91 days (2019 onward):
+  | | CAGR / maxDD / Sharpe train | validation | test |
+  |---|---|---|---|
+  | admitted coins | 34% / -31% / 0.98 | 39% / -37% / 1.08 | -4% / -38% / -0.04 |
+  | BTC only (bot + filter) | 37% / -44% / 0.97 | 49% / -23% / 1.40 | 35% / -12% / 1.48 |
+  | BTC + SOL | 88% / -44% / 1.63 | 76% / -20% / 1.72 | 35% / -13% / 1.34 |
+  | all eligible coins | 60% / -27% / 1.43 | 16% / -32% / 0.73 | 5% / -39% / 0.32 |
+  | BTC buy-and-hold | 45% / -77% / 0.88 | 110% / -26% / 1.76 | 18% / -53% / 0.59 |
+  Admission trails BTC alone on validation and test; on average 5 (train), 3 (validation) and 6 (test) coins are admitted. Selecting coins from their own history does not work forward.
+- BTC + SOL is itself a hindsight choice (SOL is the coin that happened to work in train), and in test it equals BTC alone (35%).
+- Win rule reference (not a Round 7 selection): BTC alone with the bot rule and BTC filter meets rule (a) on test (35% CAGR, maxDD -12%) and rule (b) on test (beats buy-and-hold on CAGR and drawdown);
+  on validation it misses (a) (maxDD -23%) and (b) (buy-and-hold made 110%).
+- Verdict: neither option finds a rule for adding coins to the bot. What holds up is BTC (and SOL) alone.
+- Caveats: only ~15 train and 7 validation quarters, so weak power; overlapping trailing windows; the admission script printed the test split in the same table as validation, so the test window was
+  seen at the same time and not held back (the result is negative either way, so no decision depends on it); the trait table also printed test-period correlations, which were not used.

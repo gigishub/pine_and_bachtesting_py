@@ -151,6 +151,20 @@ Rules (BTC state = BTC's own Round 4b band breakout: +1 long / -1 short / 0 flat
 Cells: R1-R3 × n {10, 20} × 3 timeframes, R0 × 3, R4 × 3, plus the statistic. Legs both/long/short. Gates as Round 3-5 (net > 0, `shift_p` <= 0.05 on the basket, neighbours positive).
 The 114 cells of Rounds 3-4b plus these count against any winner. Test window run once, only for a cell family that passes train and validation.
 
+## Round 7 — what makes the BTC/SOL bot work, and which coins to add (user asked options 1 and 2; declared before any run; frozen)
+Data: Binance daily, all USDT pairs incl. delisted (a gap > 7 days splits a coin), point-in-time universe = top 30 by 180-day median dollar volume, >= 180 days listed.
+Rule: the live bot's own strategy code (`../swing_research/bot_baseline.py: bot_position`, live parameters) with the BTC 20-day-return entry filter (>= -3%, prior close vs 20 closes before)
+applied to every coin, cost 0.15% per side, open-to-open. Splits: train 2018 → 2022-12-31, validation 2023-01-01 → 2024-09-30, test 2024-10-01 → now (run once). Code: `bot_coins.py`.
+- Option 1, traits: at each quarter start (every 91 days from 2019-01-01) and for each eligible coin with >= 365 days listed, six traits from the trailing 365 days: liquidity (log 180d median
+  dollar volume), volatility (std of daily returns), trend efficiency (mean 20-day Kaufman efficiency ratio), persistence (autocorrelation of 5-day returns at lag 5), BTC correlation (daily returns),
+  age (days listed). Outcome: the rule's summed log return over the next 91 days. Per quarter the Spearman rank correlation trait vs outcome; averaged per split.
+  A trait passes if its mean correlation has the same sign in train and validation, |mean| >= 0.05 in both, and t-stat over quarters >= 2 in train. Top-minus-bottom tercile spread must be positive
+  (in the passing direction) in train and validation. Where BTC and SOL sit on each trait is reported. Passing traits define an ex-ante subset (top tercile in the train direction) judged on validation, then test once.
+- Option 2, walk-forward admission: at each quarter start a coin is admitted if over its trailing 730 days the rule had >= 8 trades, profit factor >= 1.5, and a positive return in each 365-day half.
+  Admitted coins are equal-weighted for the next quarter (cash if none). Compared with: BTC alone, BTC + SOL (from 2020-08), and every eligible coin equal-weighted, all with the same rule.
+- Both options are judged as portfolios on validation, then test once, against those baselines and BTC buy-and-hold, with the win rule (a) or (b). Nothing is tuned after seeing results;
+  the thresholds above are the only ones tried. Limits: overlapping trailing windows, ~28 train quarters and ~7 validation quarters give low power.
+
 ## Ideas (10)
 - [x] A — Control: BTC trend (close > SMA200 and 20d return > -3%), long BTC → pass train, fail valid
 - [x] B — Cross-sectional momentum: top 3 of 10 by 60d return, cash when BTC filter off → pass train, fail valid (loses money)
@@ -172,18 +186,16 @@ The 114 cells of Rounds 3-4b plus these count against any winner. Test window ru
 - [x] M7 — Rounds 4 and 4b (EMA/ATR band breakout, exits) on train and the promoted plateau on validation: fails (see Phase B)
 - [x] M8 — Round 5 (long-only breakout on other coins, liquid set): no promotion, good coins cannot be picked (see Phase B)
 - [x] M9 — Round 6 (BTC as leader): no rule passes train, lead-lag sign flips (see Phase B)
+- [x] M10 — Round 7 (traits and walk-forward coin admission for the BTC/SOL bot): neither works (see Phase B)
 - [ ] M4 — Finalists on test once, then funding and 4h/1h follow-up if any pass
   - **Status:** no finalists (nothing passed validation). Test untouched. Next step decided at a checkpoint.
 
 ## Next (for the new session)
-- Read `VERIFICATION_INDEX.md` (Current truths) first. Rounds 1 and 2 (20 ideas) done; none passes validation; test untouched by these ideas.
-- Checkpoint after round 2: closer to the goal? The goal itself needs a decision. Every pre-declared idea fails; what works
-  is BTC trend (~28–30%/yr, drawdown ~45–50%) and carry (real, shrinking). The win rule (20%/20% or beat BTC on return and
-  drawdown, or 70%/30% capture) is very hard in windows where BTC roughly doubles (validation). Recommendation: **simplify**.
-  Either accept "the BTC 20-day-return filter on the live bot is the result" and stop searching, or relax the win rule.
-- One more round is allowed by the stop rule. Only worth running if declared as sleeve blends (trend + carry, fixed weights)
-  and judged on drawdown-adjusted return, since that is where the train data pointed (T: 15.9%/-14.6%). Expect it to fail
-  validation on return because carry has faded to ~5%/yr.
+- Read `VERIFICATION_INDEX.md` (Current truths) first. Seven rounds, ~150 pre-declared ideas and cells; nothing beats BTC (and SOL) with the bot rule and the BTC 20-day filter.
+- Checkpoint after Round 7: the end goal (a strategy that catches big moves on any tradable coin) is not supported by the evidence: shorts lose everywhere, breakouts on other coins only follow the market,
+  BTC does not reliably lead alts, coin traits and track records do not select coins forward. **Recommendation: pivot** from finding a new strategy to running what works:
+  finish the live bot's switch day (`../swing_research/PLAN.md` M2.4–M2.5), keep BTC (+ SOL) only, and stop the search unless a new data source or a concrete setup from the user is available.
+- Ideas still untested that are not price rules: listing / unlock / news events, cross-exchange basis, liquidation data, maker-fee versions of the 4-hour BTC-reversal effect.
 - Code move of `swing_research/` and `long_short_research/` into this folder is deferred (would break imports).
 
 ## Open / deferred
