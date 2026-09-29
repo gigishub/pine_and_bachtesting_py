@@ -125,3 +125,21 @@ SOL 239% / 95% / 32%; consistent with the live-bot baseline (test drawdown -12%)
 - Verdict: neither option finds a rule for adding coins to the bot. What holds up is BTC (and SOL) alone.
 - Caveats: only ~15 train and 7 validation quarters, so weak power; overlapping trailing windows; the admission script printed the test split in the same table as validation, so the test window was
   seen at the same time and not held back (the result is negative either way, so no decision depends on it); the trait table also printed test-period correlations, which were not used.
+
+## Round 8 historic level breaks with volume conviction: long-only looks strong on train, fails the shift gate on validation, and volume conviction adds nothing consistent
+Break of the highest high / lowest low of the previous 90, 180, 365 days or of a tested pivot level, entry at the close, exit when the close returns through the level or 3 ATR below the extreme close;
+conviction = break-day dollar volume >= 2 × its 20-day median (V), plus a close in the top/bottom 25% of the day's range (VC). Binance daily incl. delisted, top-30 point-in-time, 0.15% per side, no funding
+(`levels.py`, `results/round8_*.csv`; 72 cells on train).
+- Train (2018 → 2022): long-only is positive in 24 of 24 cells (+6% to +20%/yr, maxDD -10% to -25%, Sharpe 0.6–1.1) while EW top-30 buy-and-hold made -17%/yr with maxDD -90% and BTC +3.8% with maxDD -81%.
+  Shorts lose: short-only positive in 1 of 24 cells; both-leg versions are worse than long-only. 13 of the 24 long-only cells pass the shift gate; exposure is low (0.2–0.5 trades per coin per year).
+- Event study (mean net 10-day forward return, monthly-clustered t): long breaks +4% to +10% but t-stats all < 1.4 (a few outsized moves); short breaks about zero or negative.
+- Conviction on train: V or VC beats the plain sibling on Sharpe and on event mean for L180 and L365 (e.g. L365 Sharpe 0.91 → 1.08 / 1.11, maxDD -15% → -12% / -10%), not for L90 or the pivot level LP.
+  Eight cells were promoted (L180, L365 × V, VC × BTC filter on/off), declared in `PLAN.md` before validation.
+- Validation (2023-01 → 2024-09; BTC buy-and-hold +115%, maxDD -26%; EW top-30 +54%, maxDD -59%): the eight promoted cells (and their plain siblings) are positive: +5% to +16%/yr, maxDD -7% to -11%, Sharpe 0.6–1.1,
+  but `shift_p` 0.19 to 0.46 in every cell (gate 2 needs <= 0.05). The best cell, L180 V (no BTC filter), makes +16.2% with maxDD -9.3% and Sharpe 1.14, equal to its plain sibling (+16.5%, Sharpe 1.08).
+  VC is worse than plain (L180 +9.0%, L365 +5.2%). Volume conviction does not add consistently in validation.
+- Win rule: (a) fails (CAGR < 20%); (b) fails (far below buy-and-hold on return). Test untouched.
+- Verdict: fail. Long-only level breaks are a low-exposure, low-drawdown way to hold coins, not a timing edge: the shift null shows the entries are no better than shifted ones once the exposure is matched.
+- Not tried on purpose: scaling the exposure up (a 2× version would reach a return near the 20% mark with a drawdown near 20%), because scaling something the shift test cannot distinguish from luck adds risk without evidence.
+- Caveats: no funding or borrow cost for shorts (the short leg fails anyway); Binance spot data, so shorting assumes a perp; a rule with 0.2–1.4 trades per coin per year has few events per split;
+  event study uses overlapping-free entries only when flat; 72 + 8 cells count against any winner.

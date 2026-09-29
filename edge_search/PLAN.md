@@ -165,6 +165,23 @@ applied to every coin, cost 0.15% per side, open-to-open. Splits: train 2018 →
 - Both options are judged as portfolios on validation, then test once, against those baselines and BTC buy-and-hold, with the win rule (a) or (b). Nothing is tuned after seeing results;
   the thresholds above are the only ones tried. Limits: overlapping trailing windows, ~28 train quarters and ~7 validation quarters give low power.
 
+## Round 8 — historic price-level breaks with conviction (user asked; declared before any run; frozen)
+Data and universe as Round 7 (Binance daily, incl. delisted, point-in-time top 30 by 180-day dollar volume). Each coin trades its own signal; the portfolio is the equal-weight average over the
+day's eligible coins (cash when flat). Costs 0.15% per side, no funding (spot-style data, shorts ignore funding: stated limit). Splits as Round 7. Code `levels.py`.
+Levels (known at the close): L90, L180, L365 = highest high / lowest low of the previous 90, 180, 365 days; LP = tested pivot level: the highest confirmed pivot high (5 days each side, confirmed after 5 days)
+of the last 365 days that has another pivot high within 1.5% (mirror for pivot lows).
+Break: close beyond the level (long above resistance, short below support). Entry at that close, held from the next bar.
+Conviction: none | V = break-day dollar volume >= 2 × its previous-20-day median | VC = V and the close in the top 25% (long) / bottom 25% (short) of the day's range.
+Exit (all): close back through the level (failed break), or close 3 × ATR(14) from the extreme close since entry (trailing stop). After an exit the close must return to the other side of the level before re-entry.
+Cells: 4 levels × 3 conviction = 12, each long-only / short-only / both, each without and with the BTC filter (long only while BTC 20-day return >= -3%; shorts only while below) = 24 cells for 'both'.
+Event study alongside: mean 10-day forward return after each break, volume-confirmed vs not, net of 0.3% round trip, monthly-clustered t-stat, per split.
+Gates (train): net CAGR > 0; portfolio beats >= 95% of 200 circular shifts of its positions on Sharpe; neighbouring level lengths positive; **and conviction must add**: the V or VC variant beats its no-conviction sibling
+on train Sharpe and on event-study mean forward return. Survivors to validation (gates 1, 2, conviction-adds, win rule), then test once. 24 cells + the earlier ~150 count against any winner.
+
+Round 8 train result (all 72 cells run, gates applied mechanically): long-only is positive in 24 of 24 cells (+6% to +20%/yr, maxDD -10% to -25%, Sharpe 0.6–1.1; EW top-30 buy-and-hold -17%/yr, maxDD -90%);
+short-only positive in 1 of 24; both legs worse than long-only. Conviction adds (V or VC beats the plain sibling on Sharpe and on event-study mean) for L180 and L365 only, not for L90 or LP.
+Promoted to validation (long-only; g1, g2 `shift_p` <= 0.05 and conviction-adds): L180 and L365 × {V, VC} × BTC filter {off, on} = 8 cells. Validation runs only these; test once for those that pass.
+
 ## Ideas (10)
 - [x] A — Control: BTC trend (close > SMA200 and 20d return > -3%), long BTC → pass train, fail valid
 - [x] B — Cross-sectional momentum: top 3 of 10 by 60d return, cash when BTC filter off → pass train, fail valid (loses money)
@@ -187,6 +204,7 @@ applied to every coin, cost 0.15% per side, open-to-open. Splits: train 2018 →
 - [x] M8 — Round 5 (long-only breakout on other coins, liquid set): no promotion, good coins cannot be picked (see Phase B)
 - [x] M9 — Round 6 (BTC as leader): no rule passes train, lead-lag sign flips (see Phase B)
 - [x] M10 — Round 7 (traits and walk-forward coin admission for the BTC/SOL bot): neither works (see Phase B)
+- [x] M11 — Round 8 (historic level breaks with volume conviction): fails validation shift gate, conviction adds nothing consistent (see Phase B)
 - [ ] M4 — Finalists on test once, then funding and 4h/1h follow-up if any pass
   - **Status:** no finalists (nothing passed validation). Test untouched. Next step decided at a checkpoint.
 
