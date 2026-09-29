@@ -11,3 +11,4 @@
 ## Phases
 - [Phase A](VERIFICATION_PHASE_A.md) — top-down edge check (regime → setup) on the point-in-time top-10 universe, daily
 - Phase B: mean reversion (5-day) loses on the top 10 on all days, and no chop detector fixes it in train → [Phase B: Chop regime layer](VERIFICATION_PHASE_B.md#chop-regime-layer-no-detector-makes-mean-reversion-work)
+- Funding carry (long spot + short perp) on BTC/ETH is positive after costs in every period but shrinking: ~22–28% (2020–22) → ~10% (2023–24) → ~5% (since 2024-10); alts and a "smart" on/off filter are worse → [Phase C: Funding carry BTC ETH](VERIFICATION_PHASE_C.md#funding-carry-btc-eth-real-but-shrinking-about-5-a-year-and-falling)
