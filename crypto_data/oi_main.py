@@ -44,10 +44,10 @@ SYMBOLS: list[str] | None = None
 # Interval for OI bars: '5min', '15min', '30min', '1h', '4h', '1d'
 # '1h' is a good default — high enough resolution to see intraday swings
 # without generating an enormous file. Use '1d' for a lightweight overview.
-INTERVAL = "1h"
+INTERVAL = "1d"
 
 START_TIME = "2019-01-01 00:00:00"
-END_TIME = "2026-04-22 00:00:00"  # None → downloads up to now
+END_TIME = None  # None → downloads up to now
 
 CATEGORY = "linear"  # 'linear' for USDT perpetuals; 'inverse' for coin-margined
 

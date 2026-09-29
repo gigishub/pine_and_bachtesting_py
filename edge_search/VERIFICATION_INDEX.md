@@ -5,6 +5,7 @@
 - Of 10 ideas, A (BTC trend), B (momentum), E (low-vol), H (long/short momentum) pass train; C, D, F, G, I, J fail → [Phase A: Train](VERIFICATION_PHASE_A.md#train-a-b-e-h-pass-all-gates-c-d-f-g-i-j-rejected)
 - No idea passes validation; none meets 20%/20% or beats BTC buy-and-hold; test untouched → [Phase A: Validation](VERIFICATION_PHASE_A.md#validation-nothing-survives-b-loses-money-all-trail-buy-and-hold)
 - Capture ratios: A, B, E keep ~53–72% of BTC upside and take ~22–27% of downside on train, but 116–144% of downside on validation (no crash there, slow filters whipsaw) → [Phase A: Capture ratios](VERIFICATION_PHASE_A.md#capture-ratios-trend-ideas-protect-in-real-bear-markets-but-validation-had-no-crash-to-protect-against)
+- Round 2 (crowding overlays K–T on BTC trend): none passes train; every overlay is indistinguishable from a shifted one (`shift_p` 0.47–0.92); funding carry blended in (T) and an equal-weight basket (R) improve drawdown but not because of the overlay → [Phase B: Round 2 train](VERIFICATION_PHASE_B.md#round-2-train-no-crowding-overlay-passes-every-overlay-is-indistinguishable-from-a-shifted-one)
 
 ### From earlier arcs (links go to the original docs)
 - Live bot works on BTC/SOL but not the median coin; drawdowns ~45–55% → [Swing Phase A](../swing_research/VERIFICATION_PHASE_A.md#live-bot-baseline-btc-sol-22-coins)

@@ -64,6 +64,30 @@ Ideas A–J above keep the Binance split.
 - Gates are the same as in Rules. Extra gate tightening for the short train is **still to declare before the first run**.
 - Nothing in this section has been run yet.
 
+## Round 2 — crowding overlays (declared before any run; frozen)
+Baseline sleeve = idea A (long BTC when close > SMA200 and 20d return > -3%). An overlay multiplies A's weight by
+0 (cash) or 0.5; it never adds an entry. Signals at the daily close; funding uses only settlements strictly before the close;
+open interest is lagged one extra day (the 1d bar timestamp is not known to be start or end of the interval).
+Funding = mean per-8h rate over the last 7 days (F7). OI change = OI(t-1) / OI(t-8) - 1 (O7). z = vs trailing 90 days.
+Ideas (fixed parameters, no grid):
+- [x] K — cash when F7 z > 2 → fail train (shift_p 0.81)
+- [x] L — cash when F7 > 0.03% per 8h (about 33%/yr) → fail train (0.81)
+- [x] M — cash when O7 > +25% and BTC 7d return < +2% (OI up, price stalls) → fail train (0.47)
+- [x] N — cash when O7 z > 2 → fail train (0.68)
+- [x] O — half size when F7 z > 1 (cash when z > 2) → fail train (0.67)
+- [x] P — cash when L or M → fail train (0.78)
+- [x] Q — cash when the median F7 of the top-10 coins that have funding > 0.02% per 8h → fail train (0.87)
+- [x] R — as K but the baseline is equal-weight top-10 ∩ funding coins, weekly, BTC filter on → fail train (0.92; gain is the basket)
+- [x] S — as P with the baseline vol-targeted to 30% (no leverage) → fail train (loses money)
+- [x] T — blend: 50% of L + 50% BTC funding carry (spot long + perp short, earns F, entry/exit cost 0.6%) → fail train (0.53; gain is the carry sleeve)
+Split: train 2020-11-15 → 2023-06-30 (after OI and z warm-up), validation 2023-07-01 → 2024-09-30, test 2024-10-01 → now, once.
+Gates on train (all four): (1) return after costs > 0; (2) overlay beats >= 95% of 200 circular shifts of the *overlay multiplier*
+against price on Calmar (baseline A's trend timing is kept, so this tests the overlay only); (3) both ×0.5 and ×2 lookback
+variants positive; (4) Calmar and max drawdown both better than baseline A on the same window.
+Validation: gates 1, 2 and 4 again, plus win rule (a), or (b) on strict buy-and-hold or on capture ratios (up >= 70%, down <= 30%).
+Test: survivors once. Stop rule: this is round 1 of the two allowed; a clear "none" is a valid result.
+Caveat: test-window dates were already used by M10 (other ideas); any survivor there is weaker evidence.
+
 ## Ideas (10)
 - [x] A — Control: BTC trend (close > SMA200 and 20d return > -3%), long BTC → pass train, fail valid
 - [x] B — Cross-sectional momentum: top 3 of 10 by 60d return, cash when BTC filter off → pass train, fail valid (loses money)
@@ -80,18 +104,19 @@ Ideas A–J above keep the Binance split.
 - [x] M1 — Engine + sanity checks (random weights = no edge; peeking = edge; buy-and-hold matches)
 - [x] M2 — Ideas A–J on train, verdicts logged
 - [x] M3 — Survivors on validation
+- [x] M5 — Round 2 crowding overlays K–T on train: none passes (see Phase B)
 - [ ] M4 — Finalists on test once, then funding and 4h/1h follow-up if any pass
   - **Status:** no finalists (nothing passed validation). Test untouched. Next step decided at a checkpoint.
 
 ## Next (for the new session)
-- Read `VERIFICATION_INDEX.md` (Current truths) first. Ten ideas done; none passed validation; test untouched.
-- Check the other session's M10 funding-filter results (`../long_short_research/results/funding_filter_*.csv`,
-  see `../long_short_research/PLAN3.md`); only the train CSV existed at last check. Log them in a VERIFICATION doc.
-- Open interest is downloaded and checked (daily). For BTC the OI train starts 2020-08-05, later than funding.
-- Next arc idea: crowding overlay (extreme funding, OI up while price stalls) that cuts exposure only when a crash
-  develops, on top of a trend/beta baseline. Faster exits, not new entry signals. Use the funding/OI split above.
-- Then test blends of sleeves that each passed alone (carry + trend + overlay).
-- Stop rule: at most two more rounds of ~10 pre-declared ideas; if none passes validation, relax the target or stop.
+- Read `VERIFICATION_INDEX.md` (Current truths) first. Rounds 1 and 2 (20 ideas) done; none passes validation; test untouched by these ideas.
+- Checkpoint after round 2: closer to the goal? The goal itself needs a decision. Every pre-declared idea fails; what works
+  is BTC trend (~28–30%/yr, drawdown ~45–50%) and carry (real, shrinking). The win rule (20%/20% or beat BTC on return and
+  drawdown, or 70%/30% capture) is very hard in windows where BTC roughly doubles (validation). Recommendation: **simplify**.
+  Either accept "the BTC 20-day-return filter on the live bot is the result" and stop searching, or relax the win rule.
+- One more round is allowed by the stop rule. Only worth running if declared as sleeve blends (trend + carry, fixed weights)
+  and judged on drawdown-adjusted return, since that is where the train data pointed (T: 15.9%/-14.6%). Expect it to fail
+  validation on return because carry has faded to ~5%/yr.
 - Code move of `swing_research/` and `long_short_research/` into this folder is deferred (would break imports).
 
 ## Open / deferred
